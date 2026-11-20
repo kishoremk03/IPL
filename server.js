@@ -10,10 +10,15 @@ const path = require('path');
 const crypto = require('crypto');
 
 const TEAM_IDS = ['mi','csk','rcb','kkr','dc','pbks','rr','srh','gt','lsg'];
-const DEFSQ = 25, SQ_OPTS = [15, 18, 21, 25], PURSE = 100, PAUSE_MS = 180000, PAUSES_EACH = 3;
+const DEFSQ = 25, SQ_OPTS = [15, 18, 21, 25], PURSE = 100;
 const msq = s => s.maxsq || DEFSQ;
 const osl = s => Math.floor(msq(s) / 3);      // overseas cap: 15 -> 5 (10 Indian), 18 -> 6 (12), 21 -> 7 (14), 25 -> 8 (17)
 const BID_MS = 10000, BUMP_MS = 10000, RES_MS = 3000, TRADE_TTL = 90000;
+const MAX_PICK = 10;                                   // each team can shortlist up to this many unsold players for the accelerated round
+const ACC_BID_MS = 7000, ACC_BUMP_MS = 5000;          // the accelerated round for unsold players is quicker
+const accB = b => Math.max(.25, Math.round(b / 2 / .25) * .25);   // unsold players come back at half base price
+const baseOf = (s, i) => s.acc ? accB(P[i].b) : P[i].b;
+const bidMs = s => s.acc ? ACC_BID_MS : BID_MS, bumpMs = s => s.acc ? ACC_BUMP_MS : BUMP_MS;
 
 const DATA=`Tim David|BAT|AUS|1.0|82||rcb|16|1|1
 Venkatesh Iyer|AR|IND|1.0|79|M|rcb|16|1|1
@@ -332,8 +337,35 @@ const rooms = new Map();
 const r2 = x => Math.round(x * 100) / 100;
 const uid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12);
 
+/* ---------- saving: every room is written to disk, so a restart does not lose the auction ---------- */
+const DATA_FILE = path.join(process.env.DATA_DIR || __dirname, 'rooms.json');   // on a host with a persistent disk, point DATA_DIR at it
+let saveT = null;
+function saveNow() {
+  try {
+    const o = {}; for (const [k, s] of rooms) o[k] = s;
+    const tmp = DATA_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(o, (k, v) => k === 'clients' ? undefined : v));
+    fs.renameSync(tmp, DATA_FILE);
+  } catch (e) { console.error('Could not save rooms:', e.message); }
+}
+function persist() { if (!saveT) saveT = setTimeout(() => { saveT = null; saveNow(); }, 1500); }
+function restore() {
+  try {
+    const o = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')), now = Date.now();
+    for (const k of Object.keys(o)) {
+      const s = o[k]; s.clients = new Set(); s.touched = now;
+      if (s.phase === 'auction' && !s.pausedAt) {          // give everybody time to reconnect before the clock moves on
+        if (s.stage === 'bid') s.endsAt = Math.max(s.endsAt, now + 15000); else if (s.stage === 'res') s.resUntil = now + 3000;
+      }
+      rooms.set(k, s);
+    }
+    console.log('Restored ' + rooms.size + ' room(s) from ' + DATA_FILE);
+  } catch (e) { if (e.code !== 'ENOENT') console.error('Could not restore rooms:', e.message); }
+}
+['SIGTERM', 'SIGINT'].forEach(sg => process.on(sg, () => { saveNow(); process.exit(0); }));
+
 function broadcast(s) {
-  s.touched = Date.now();
+  s.touched = Date.now(); persist();
   for (const c of s.clients) {
     try { c.res.write('data: ' + JSON.stringify(view(s, c.pid)) + '\n\n'); } catch (e) { s.clients.delete(c); }
   }
@@ -407,19 +439,42 @@ function act(s, r) {
       s.endsAt = now; tick(s); break;
     case 'skipset':
       if (!isHost || s.stage !== 'bid') throw new Error('Host only.');
+      if (s.acc) throw new Error('Not available in the accelerated round.');
       s.skipSet = s.setOf[s.cur]; s.endsAt = now; tick(s); break;
     case 'pause': {
       if (s.phase !== 'auction') throw new Error('Nothing to pause yet.');
       if (!pl.team && !isHost) throw new Error('Only team owners and the host can pause.');
       if (s.hold) throw new Error('Already paused by ' + s.hold.name + '.');
-      if ((pl.pz || 0) >= PAUSES_EACH) throw new Error('You have used all ' + PAUSES_EACH + ' of your pauses.');
-      pl.pz = (pl.pz || 0) + 1;
-      s.hold = { by: r.pid, name: pl.name, team: pl.team, until: now + PAUSE_MS };
+      s.hold = { by: r.pid, name: pl.name, team: pl.team, until: 0 };      // no time limit and no limit on how often: it lasts until someone taps Resume
       s.log.push('⏸ ' + pl.name + ' paused the auction.'); break; }
     case 'resume':
       if (!s.hold) break;
       if (r.pid !== s.hold.by && !isHost) throw new Error('Only ' + s.hold.name + ' or the host can resume.');
       s.log.push('▶ Auction resumed.'); s.hold = null; break;
+    case 'ready': {
+      if (s.stage !== 'pick') throw new Error('Picking is not open.');
+      const tid = pl.team; if (!tid || !s.tm[tid]) throw new Error('Only team owners pick players.');
+      const seen = new Set(), list = [];
+      (Array.isArray(r.ids) ? r.ids : []).forEach(x => { const n = Number(x); if (Number.isInteger(n) && s.accPool.indexOf(n) >= 0 && !seen.has(n)) { seen.add(n); list.push(n); } });
+      if (list.length > MAX_PICK) throw new Error('Pick at most ' + MAX_PICK + ' players.');
+      s.picks[tid] = list; s.ready[tid] = true;
+      s.log.push(tid.toUpperCase() + ' is ready (' + list.length + ' picked)');
+      if (allReady(s)) startAcc(s, now);
+      break; }
+    case 'unready': {
+      if (s.stage !== 'pick') throw new Error('Picking is not open.');
+      if (pl.team && s.tm[pl.team]) s.ready[pl.team] = false; break; }
+    case 'accgo':
+      if (!isHost || s.stage !== 'pick') throw new Error('Host only.');
+      startAcc(s, now); break;
+    case 'chat': {
+      const text = String(r.text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (!text) break;
+      if (now - (pl.lastChat || 0) < 600) throw new Error('Slow down a little.');
+      pl.lastChat = now; s.chat = s.chat || [];
+      s.chat.push({ id: (s.cn = (s.cn || 0) + 1), pid: r.pid, name: pl.name, team: pl.team || null, text, ts: now });
+      if (s.chat.length > 100) s.chat = s.chat.slice(-80);
+      break; }
     case 'tpropose': proposeTrade(s, pl, r, now); break;
     case 'taccept': case 'tdecline': case 'tcancel': answerTrade(s, pl, r, now); break;
     case 'end':
@@ -504,13 +559,20 @@ function answerTrade(s, pl, r, now) {
 const poolIdx = m => P.map((p, i) => i).filter(i => m === 'sq26' ? P[i].s : m === 'core' ? P[i].k : true);
 
 function buildSets(pool) {
-  const setOf = {}, names = ['Set 1 - Marquee stars (top 10)'];
-  pool.slice().sort((a, b) => P[b].q - P[a].q).slice(0, 10).forEach(i => setOf[i] = 0);
-  let k = 1;
-  [['BAT','Batters'],['AR','All-rounders'],['WK','Wicketkeepers'],['BOWL','Spin bowlers','S'],['BOWL','Mid-fast bowlers','M'],['BOWL','Fast bowlers','F']].forEach(([r, l, t]) => {
-    const a = pool.filter(i => setOf[i] === undefined && P[i].r === r && (!t || (P[i].bt || 'M') === t)).sort((x, y) => P[y].q - P[x].q);
-    for (let j = 0; j < a.length; j += 10) { a.slice(j, j + 10).forEach(i => setOf[i] = k); names.push('Set ' + (k + 1) + ' - ' + l + (a.length > 10 ? ' ' + (j / 10 + 1) : '')); k++; }
+  /* Order: marquee, Batters 1-2, Wicketkeepers 1, All-rounders 1-2, Spin 1-2, Mid-fast 1, Fast 1-2, then every remaining set in random order.
+     Inside each set the players are shuffled when the auction starts. */
+  const shuf = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const top = pool.slice().sort((a, b) => P[b].q - P[a].q).slice(0, 10), isTop = new Set(top), chunk = {};
+  [['BAT','Batters'],['WK','Wicketkeepers'],['AR','All-rounders'],['BOWL','Spin bowlers','S'],['BOWL','Mid-fast bowlers','M'],['BOWL','Fast bowlers','F']].forEach(([r, l, t]) => {
+    const a = pool.filter(i => !isTop.has(i) && P[i].r === r && (!t || (P[i].bt || 'M') === t)).sort((x, y) => P[y].q - P[x].q);
+    chunk[l] = []; for (let j = 0; j < a.length; j += 10) chunk[l].push({ l: l + ' ' + (j / 10 + 1), ids: a.slice(j, j + 10) });
   });
+  const seq = [{ l: 'Marquee stars (top 10)', ids: top }];
+  [['Batters',0],['Batters',1],['Wicketkeepers',0],['All-rounders',0],['All-rounders',1],['Spin bowlers',0],['Spin bowlers',1],['Mid-fast bowlers',0],['Fast bowlers',0],['Fast bowlers',1]].forEach(([l, n]) => { const c = chunk[l][n]; if (c) { c.used = 1; seq.push(c); } });
+  const rest = []; Object.keys(chunk).forEach(l => chunk[l].forEach(c => { if (!c.used) rest.push(c); }));
+  shuf(rest).forEach(c => seq.push(c));
+  const setOf = {}, names = [];
+  seq.forEach((c, k) => { c.ids.forEach(i => setOf[i] = k); names.push('Set ' + (k + 1) + ' - ' + c.l); });
   return { setOf, names };
 }
 
@@ -532,7 +594,7 @@ function startAuction(s, isHost, now) {
 
 /* ---------- auction engine ---------- */
 const inc = b => b < 2 ? .25 : b < 5 ? .5 : 1;
-const nextBid = s => s.lead ? r2(s.bid + inc(s.bid)) : P[s.cur].b;
+const nextBid = s => s.lead ? r2(s.bid + inc(s.bid)) : baseOf(s, s.cur);
 
 function why(s, tid, amt) {
   const t = s.tm[tid], p = P[s.cur];
@@ -553,7 +615,7 @@ function placeBid(s, r, now) {
   if (Math.abs(need - r.amt) > 1e-9) throw new Error('Price moved to ' + need + ' Cr.');
   const w = why(s, tid, need); if (w) throw new Error(w);
   s.bid = need; s.lead = tid;
-  s.endsAt = Math.max(s.endsAt, now + BUMP_MS);
+  s.endsAt = Math.max(s.endsAt, now + bumpMs(s));
   s.log.push(tid.toUpperCase() + ' bids ' + need + ' Cr');
   if (s.log.length > 40) s.log = s.log.slice(-30);
   earlyClose(s, now);
@@ -568,7 +630,6 @@ function earlyClose(s, now) {
 function syncPause(s, now) {
   if (s.phase !== 'auction') return false;
   let ch = false;
-  if (s.hold && now >= s.hold.until) { s.hold = null; ch = true; s.log.push('Pause ended automatically.'); }
   const open = (s.trades && s.trades.length > 0) || !!s.hold;      // an open trade offer or a manual pause freezes the clock
   if (open && !s.pausedAt) { s.pausedAt = now; return true; }
   if (!open && s.pausedAt) {
@@ -583,7 +644,7 @@ function syncPause(s, now) {
 const due = s => {
   const n = Date.now();
   if (s.phase !== 'auction') return false;
-  if (s.pausedAt) return !(s.trades || []).some(t => n < t.at + TRADE_TTL) && !(s.hold && n < s.hold.until);   // nothing left holding the clock: resume
+  if (s.pausedAt) return !(s.trades || []).some(t => n < t.at + TRADE_TTL) && !s.hold;   // nothing left holding the clock: resume
   return (s.stage === 'bid' && n >= s.endsAt) || (s.stage === 'res' && n >= s.resUntil);
 };
 
@@ -622,15 +683,37 @@ function settle(s, now) {
 function nextLot(s, now) {
   s.i++;
   for (;; s.i++) {
-    if (s.i >= s.order.length || Object.keys(s.tm).every(t => s.tm[t].sq.length >= msq(s))) return finish(s);
+    const full = Object.keys(s.tm).every(t => s.tm[t].sq.length >= msq(s));
+    if (s.i >= s.order.length || full) {
+      if (!full && !s.acc && s.un.length) { startPick(s); return; }   // main list finished: teams now pick which unsold players come back
+      return finish(s);
+    }
     const idx = s.order[s.i];
     if (s.skipSet != null) { if (s.setOf[idx] === s.skipSet) { s.un.push(idx); continue; } s.skipSet = null; }
     s.cur = idx;
-    if (!Object.keys(s.tm).some(t => { s.passed = []; return !why(s, t, P[idx].b); })) { s.un.push(idx); continue; }
+    if (!Object.keys(s.tm).some(t => { s.passed = []; return !why(s, t, baseOf(s, idx)); })) { s.un.push(idx); continue; }
     break;
   }
-  s.stage = 'bid'; s.bid = 0; s.lead = null; s.passed = []; s.res = null; s.endsAt = now + BID_MS;
-  s.log.push('Next up: ' + P[s.cur].n + ' (' + P[s.cur].r + ', ' + P[s.cur].c + '), base ' + P[s.cur].b + ' Cr');
+  s.stage = 'bid'; s.bid = 0; s.lead = null; s.passed = []; s.res = null; s.endsAt = now + bidMs(s);
+  s.log.push('Next up: ' + P[s.cur].n + ' (' + P[s.cur].r + ', ' + P[s.cur].c + '), base ' + baseOf(s, s.cur) + ' Cr' + (s.acc ? ' (accelerated)' : ''));
+}
+
+/* ---------- accelerated round: every team shortlists unsold players; only shortlisted players come back (at half base price) ---------- */
+function startPick(s) {
+  s.stage = 'pick'; s.accPool = s.un.slice(); s.picks = {}; s.ready = {};
+  Object.keys(s.tm).forEach(t => { if (s.tm[t].sq.length >= msq(s)) s.ready[t] = true; });      // a full squad has nothing to pick
+  s.log.push('ACCELERATED ROUND: each team picks up to ' + MAX_PICK + ' unsold players. Only picked players come back.');
+}
+const allReady = s => Object.keys(s.tm).every(t => s.ready[t] || s.tm[t].sq.length >= msq(s));
+function startAcc(s, now) {
+  const cnt = {}; Object.values(s.picks || {}).forEach(l => l.forEach(i => cnt[i] = (cnt[i] || 0) + 1));
+  const order = s.accPool.filter(i => cnt[i]).sort((a, b) => cnt[b] - cnt[a] || P[b].q - P[a].q);   // most wanted first
+  s.un = s.accPool.filter(i => !cnt[i]);                 // nobody picked them: they stay unsold
+  s.picks = {}; s.ready = {};
+  if (!order.length) { s.log.push('Nobody picked any player. The auction ends here.'); return finish(s); }
+  s.acc = 1; s.order = order; s.i = -1; s.skipSet = null; s.stage = 'res';
+  s.log.push('Accelerated round: ' + order.length + ' picked players come to the block at half base price.');
+  nextLot(s, now);
 }
 
 function finish(s) { s.phase = 'done'; s.stage = 'done'; s.log.push('Auction complete!'); }
@@ -639,13 +722,15 @@ function finish(s) { s.phase = 'done'; s.stage = 'done'; s.log.push('Auction com
 function view(s, pid) {
   const me = s.players[pid];
   return {
-    ok: 1, now: Date.now(), seq: s.seq, maxsq: msq(s), bidMs: BID_MS, bumpMs: BUMP_MS, osl: osl(s), pzLeft: PAUSES_EACH - (me.pz || 0), hold: s.hold ? { name: s.hold.name, team: s.hold.team, until: s.hold.until, mine: s.hold.by === pid } : null, paused: s.phase === 'auction' && !!s.pausedAt, pausedAt: s.pausedAt || 0, pend: (s.trades || []).slice(0, 1).map(t => [t.from, t.to])[0] || null, code: s.code, phase: s.phase, stage: s.stage || null, pool: s.pool,
+    ok: 1, now: Date.now(), seq: s.seq, maxsq: msq(s), bidMs: bidMs(s), bumpMs: bumpMs(s), acc: s.acc ? 1 : 0, base: s.cur != null ? baseOf(s, s.cur) : 0, osl: osl(s), pzLeft: 99, hold: s.hold ? { name: s.hold.name, team: s.hold.team, until: s.hold.until, mine: s.hold.by === pid } : null, paused: s.phase === 'auction' && !!s.pausedAt, pausedAt: s.pausedAt || 0, pend: (s.trades || []).slice(0, 1).map(t => [t.from, t.to])[0] || null, code: s.code, phase: s.phase, stage: s.stage || null, pool: s.pool,
     you: { pid, team: me.team, isHost: pid === s.host },
     players: Object.entries(s.players).map(([k, p]) => ({ name: p.name, team: p.team, host: k === s.host })),
     teams: s.tm ? Object.entries(s.tm).map(([id, t]) => ({ id, owner: t.owner, purse: t.purse, os: t.os, sq: t.sq })) : [],
-    cur: s.cur, i: s.i, total: s.order ? s.order.length : 0, setLabel: s.setn && s.cur != null ? s.setn[s.setOf[s.cur]] : '',
+    cur: s.cur, i: s.i, total: s.order ? s.order.length : 0, setLabel: s.acc ? 'Accelerated round (half base price)' : s.setn && s.cur != null ? s.setn[s.setOf[s.cur]] : '',
     bid: s.bid, lead: s.lead, endsAt: s.endsAt, passed: s.passed || [], res: s.res || null, un: s.un || [],
+    pick: s.stage === 'pick' ? { pool: s.accPool, mine: (me.team && s.picks[me.team]) || [], ready: s.ready, max: MAX_PICK, teams: Object.keys(s.tm) } : null,
     log: (s.log || []).slice(-8),
+    chat: (s.chat || []).slice(-40).map(m => [m.id, m.name, m.team, m.text, m.ts, m.pid === pid ? 1 : 0]),
     trades: (s.trades || []).filter(t => me.team && (t.from === me.team || t.to === me.team) && Date.now() < t.at + TRADE_TTL).map(t => ({ id: t.id, from: t.from, to: t.to, gp: t.gp, gc: t.gc, rp: t.rp, rc: t.rc, exp: t.at + TRADE_TTL }))
   };
 }
@@ -656,11 +741,12 @@ setInterval(() => {
 }, 100);
 setInterval(() => {                                   // forget rooms nobody has touched for 6 hours
   const old = Date.now() - 6 * 3600 * 1000;
-  for (const [k, s] of rooms) if (s.clients.size === 0 && s.touched < old) rooms.delete(k);
+  for (const [k, s] of rooms) if (s.clients.size === 0 && s.touched < old) { rooms.delete(k); persist(); }
 }, 600000);
 setInterval(() => { for (const s of rooms.values()) for (const c of s.clients) { try { c.res.write(': ping\n\n'); } catch (e) { s.clients.delete(c); } } }, 15000);
 
 /* ---------- http ---------- */
+restore();
 const INDEX = fs.readFileSync(path.join(__dirname, 'index.html'));
 const send = (res, code, body, type) => { res.writeHead(code, { 'Content-Type': type || 'application/json', 'Cache-Control': 'no-store' }); res.end(body); };
 
@@ -668,6 +754,11 @@ http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) return send(res, 200, INDEX, 'text/html; charset=utf-8');
   if (url.pathname === '/healthz') return send(res, 200, 'ok', 'text/plain');
+  if (req.method === 'GET' && url.pathname === '/sets') {          // every set; each player's status comes from the live view on the client
+    const s = rooms.get(String(url.searchParams.get('code') || '').toUpperCase());
+    if (!s || !s.players[url.searchParams.get('pid')] || !s.setn) return send(res, 200, JSON.stringify({ err: 'No auction running.' }));
+    return send(res, 200, JSON.stringify({ names: s.setn, setOf: P.map((_, i) => s.setOf[i] === undefined ? -1 : s.setOf[i]) }));
+  }
   if (req.method === 'GET' && url.pathname === '/meta') return send(res, 200, JSON.stringify({ P }));
 
   if (req.method === 'GET' && url.pathname === '/events') {

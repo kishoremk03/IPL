@@ -202,10 +202,19 @@ input.tx{width:100%;padding:12px;border-radius:12px;border:1px solid var(--ln);b
 .to .row2{margin:8px 0 0}.to .btn{padding:9px 12px;font-size:14px}
 .badge{background:var(--bad);color:#fff;border-radius:10px;padding:0 7px;margin-left:6px;font-size:12px}
 #toast.ok{background:var(--ok);color:#06251a}
+details{margin:8px 0;border:1px solid var(--ln);border-radius:12px;padding:4px 12px;background:var(--glass)}summary{cursor:pointer;padding:10px 0;list-style:none;display:flex;flex-direction:column;gap:2px}summary::-webkit-details-marker{display:none}
+.st-s,.st-u,.st-n,.st-w{flex:none;text-align:right;font-size:12px;font-weight:800;line-height:1.3}.st-s{color:var(--ok)}.st-u{color:var(--bad)}.st-n{color:var(--gold)}.st-w{color:var(--mute)}
+#chat{position:fixed;left:0;right:0;bottom:0;height:min(55vh,460px);z-index:60;background:#0d1326;border-top:1px solid var(--ln);border-radius:18px 18px 0 0;display:flex;flex-direction:column;padding:10px 12px;box-shadow:0 -10px 30px #0008}
+#chat[hidden]{display:none}.chh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.chh .btn{padding:6px 12px;font-size:13px}
+#cmsgs{flex:1;overflow-y:auto;font-size:15px;line-height:1.4}.c1{padding:4px 0}.c1.me{opacity:.9}
+#emo{display:flex;gap:2px;overflow-x:auto;padding:6px 0}#emo button,.react button{background:none;border:0;font-size:24px;padding:4px 6px;cursor:pointer}
+.crow{display:flex;gap:8px}.crow .tx{margin:0;flex:1}.crow .btn{padding:10px 16px}
+.react{display:flex;justify-content:space-around;margin:6px 0}.react[hidden]{display:none}
+.fl{position:fixed;bottom:90px;font-size:34px;pointer-events:none;animation:flup 2.2s ease-out forwards;z-index:70}@keyframes flup{from{transform:translateY(0) scale(.6);opacity:1}to{transform:translateY(-55vh) scale(1.4);opacity:0}}
 </style>
 </head>
 <body>
-<header><b>🏏 IPL Auction 3D</b><span id="lot"></span><div class="hb"><button class="btn g" id="leave" hidden>Leave</button></div></header>
+<header><b>🏏 IPL Auction 3D</b><span id="lot"></span><div class="hb"><button class="btn g" id="chatb" hidden>💬<span class="badge" id="cbadge" hidden></span></button><button class="btn g" id="setsb" hidden>📋 Sets</button><button class="btn g" id="leave" hidden>Leave</button></div></header>
 
 <section id="home">
   <h2>Multiplayer auction</h2>
@@ -240,12 +249,15 @@ input.tx{width:100%;padding:12px;border-radius:12px;border:1px solid var(--ln);b
   <p class="cm" id="cm"></p>
   <div id="host" class="skiprow" hidden><button class="btn g" id="sell"></button><button class="btn g" id="skset">⏭⏭ Skip set</button><button class="btn g" id="endA">End</button></div>
   <div class="ctl" id="ctl"></div>
+  <div class="react" id="react" hidden></div>
   <div class="skiprow" id="trrow" hidden><button class="btn g" id="pzbtn" style="flex:1"></button><button class="btn g" id="trbtn" style="flex:1">🔄 Trade</button></div>
   <p class="s" style="margin:12px 0 2px">Teams (tap for squad)</p>
   <div class="strip" id="strip"></div>
 </section>
 
+<section id="pick" hidden></section>
 <section id="end" hidden></section>
+<div id="chat" hidden><div class="chh"><b>Chat</b><button class="btn g" id="cclose">Close</button></div><div id="cmsgs"></div><div id="emo"></div><div class="crow"><input class="tx" id="ctx" maxlength="200" placeholder="Type a message" autocomplete="off"><button class="btn" id="csend">Send</button></div></div>
 <div id="ov"></div><canvas id="cf"></canvas><div id="md"><div id="mdb"></div></div><div id="toast"></div>
 
 <script>
@@ -303,7 +315,7 @@ $('leave').onclick=()=>{try{localStorage.removeItem('iplmp')}catch(e){}location.
 (async()=>{try{const s=JSON.parse(localStorage.getItem('iplmp')||'null');if(s&&s.code){P=(await call({a:'meta'})).P;ME=s;apply(await call({a:'join',name:s.name||'Player',code:s.code,pid:s.pid}))}}catch(e){try{localStorage.removeItem('iplmp')}catch(x){}}})();
 
 /* ---- helpers ---- */
-const inc=b=>b<2?.25:b<5?.5:1,nextBid=()=>V.lead?Math.round((V.bid+inc(V.bid))*100)/100:P[V.cur].b;
+const inc=b=>b<2?.25:b<5?.5:1,nextBid=()=>V.lead?Math.round((V.bid+inc(V.bid))*100)/100:V.base;
 const myT=()=>V.you.team?V.teams.find(t=>t.id===V.you.team):null;
 const whyC=(t,amt)=>{const p=P[V.cur];return V.passed.includes(t.id)?'Passed':t.sq.length>=V.maxsq?'Squad full':(p.c!=='IND'&&t.os>=V.osl)?'Overseas full':t.purse-amt<Math.max(0,14-t.sq.length)*.5?'Purse low':''};
 const tObj=t=>({...TM[t.id],purse:t.purse,sq:t.sq.map(([i,paid])=>({...P[i],paid}))});
@@ -314,10 +326,10 @@ function squad(id){const t=V.teams.find(x=>x.id===id),m=TM[id];modal(`<div style
 $('strip').onclick=e=>{const b=e.target.closest('.chip');if(b)squad(b.dataset.id)};
 
 /* ---- screens ---- */
-const show=id=>['home','lobby','game','end'].forEach(k=>$(k).hidden=k!==id);
+const show=id=>['home','lobby','game','pick','end'].forEach(k=>$(k).hidden=k!==id);
 let cardKey=null,ovKey=null,lastBid=null;
-function render(prev){$('leave').hidden=false;
-  if(V.phase==='lobby'){show('lobby');lobby()}else if(V.phase==='auction'){show('game');game(prev)}else{show('end');ending()}}
+function render(prev){$('leave').hidden=false;$('setsb').hidden=V.phase==='lobby';chatUpdate();
+  if(V.phase==='lobby'){show('lobby');lobby()}else if(V.phase==='auction'&&V.stage==='pick'){show('pick');pickUI()}else if(V.phase==='auction'){show('game');game(prev)}else{show('end');ending()}}
 function lobby(){$('rc').textContent=V.code;
   $('pl').innerHTML=V.players.map(p=>`<span class="chip">${esc(p.name)}${p.host?' 👑':''}${p.team?' • '+TM[p.team].s:''}</span>`).join('');
   $('tg').innerHTML=T.map(t=>{const o=V.players.find(p=>p.team===t.id),mine=V.you.team===t.id;return `<button class="tc ${o?'h':''}" data-id="${t.id}" style="--c:${t.c1}">${crest(t,64)}<small>${t.n}</small><em>${o?(mine?'You':esc(o.name)):'Free, tap to pick'}</em></button>`}).join('');
@@ -327,21 +339,21 @@ $('tg').onclick=e=>{const b=e.target.closest('.tc');if(!b)return;act(V.you.team=
 $('oP').onchange=e=>act('opt',{pool:e.target.value});$('oS').onchange=e=>act('opt',{sq:+e.target.value});
 $('go').onclick=()=>act('start');
 
-function game(prev){const p=P[V.cur],t=myT();
+function game(prev){const p={...P[V.cur],b:V.base,acc:V.acc},t=myT();
   $('lot').textContent=`Lot ${V.i+1}/${V.total} • ${V.setLabel}`;
-  if(cardKey!==V.cur){cardKey=V.cur;const c=$('card');c.classList.remove('in');void c.offsetWidth;c.classList.add('in');c.innerHTML=cardHTML(p);SFX.lot()}
+  if(cardKey!==V.cur+'/'+V.acc){cardKey=V.cur+'/'+V.acc;const c=$('card');c.classList.remove('in');void c.offsetWidth;c.classList.add('in');c.innerHTML=cardHTML(p);SFX.lot()}
   const nb=nextBid(),a=$('amt');a.textContent=cr(V.lead?V.bid:p.b);
   if(lastBid!==V.bid&&V.bid){a.classList.add('pop');setTimeout(()=>a.classList.remove('pop'),160);SFX.bid()}lastBid=V.bid;
   $('ldr').innerHTML=!V.lead?'<small style="color:var(--mute)">No bids yet</small>':`<div class="coin">${crest(TM[V.lead],44)}</div><div style="padding-right:56px"><b>${TM[V.lead].s}</b><small>${esc(V.teams.find(x=>x.id===V.lead).owner)}</small></div>`;
   $('cm').textContent=V.log[V.log.length-1]||'';
-  if(V.paused){const pe=V.pend,hd=V.hold;$('cm').textContent='⏸ Auction paused'+(hd?' by '+hd.name+(hd.team?' ('+TM[hd.team].s+')':'')+'. Look at squads or trade meanwhile; it resumes when they tap Resume, or automatically after 3 minutes.':'')+(pe?(hd?' ':': ')+TM[pe[0]].s+' and '+TM[pe[1]].s+' have a trade offer open.':'')}
+  if(V.paused){const pe=V.pend,hd=V.hold;$('cm').textContent='⏸ Auction paused'+(hd?' by '+hd.name+(hd.team?' ('+TM[hd.team].s+')':'')+'. Look at squads, chat or trade meanwhile. There is no time limit: it resumes when they (or the host) tap Resume.':'')+(pe?(hd?' ':': ')+TM[pe[0]].s+' and '+TM[pe[1]].s+' have a trade offer open.':'')}
   const live=V.stage==='bid'&&!V.paused;
   if(t){const w=whyC(t,nb),can=live&&V.lead!==t.id&&!w;
     $('ctl').innerHTML=`<div class="tp"><button class="bb" style="--c:${TM[t.id].c1}" data-amt="${nb}" ${can?'':'disabled'}>${crest(TM[t.id],28)}<span>${TM[t.id].s}<br><small>${V.lead===t.id?'You lead':w||'Bid '+cr(nb)}</small></span></button><button class="btn g pass" ${live&&V.lead!==t.id&&!V.passed.includes(t.id)?'':'disabled'}>Pass</button></div>`}
   else $('ctl').innerHTML='<p class="s">You are watching. Join a room before it starts to bid.</p>';
-  $('host').hidden=!V.you.isHost;$('sell').textContent=V.lead?'🔨 Sell now':'⏭ Pass player';$('sell').disabled=!live;$('skset').disabled=!live;
+  $('host').hidden=!V.you.isHost;$('sell').textContent=V.lead?'🔨 Sell now':'⏭ Pass player';$('sell').disabled=!live;$('skset').disabled=!live||!!V.acc;
   $('strip').innerHTML=V.teams.map(x=>`<button class="chip ${V.lead===x.id?'l':''}" data-id="${x.id}">${crest(TM[x.id],30)}<span><b>${TM[x.id].s}${x.id===V.you.team?' ★':''}</b>${cr(x.purse)} • ${x.sq.length}/${V.maxsq}</span></button>`).join('');
-  if(V.stage==='res'&&V.res&&ovKey!==V.i){ovKey=V.i;stamp(V.res)}
+  if(V.stage==='res'&&V.res&&ovKey!==V.i+'/'+V.acc){ovKey=V.i+'/'+V.acc;stamp(V.res)}
   tradeHook()}
 $('ctl').onclick=e=>{const b=e.target.closest('.bb'),q=e.target.closest('.pass');if(b&&!b.disabled){b.disabled=true;act('bid',{amt:+b.dataset.amt})}
     else if(q){q.disabled=true;act('pass')}};
@@ -367,7 +379,7 @@ const side=(l,c)=>{const a=l.map(i=>pn(i)+' <small>('+P[i].r+')</small>');if(c>0
 function tradeHook(){const t=myT(),hd=V.hold,own=!!t||V.you.isHost;$('trrow').hidden=!own||V.phase!=='auction';$('trbtn').hidden=!t;
   const pb=$('pzbtn');pb.hidden=!own;
   if(hd){pb.textContent=hd.mine||V.you.isHost?'▶ Resume auction':'⏸ Paused by '+hd.name;pb.disabled=!(hd.mine||V.you.isHost)}
-  else{pb.textContent='⏸ Pause ('+Math.max(0,V.pzLeft)+' left)';pb.disabled=V.paused||V.pzLeft<=0}
+  else{pb.textContent='⏸ Pause';pb.disabled=V.paused}
   if(!t)return;
   const inc=liveTr().filter(x=>x.to===t.id);
   $('trbtn').innerHTML='🔄 Trade'+(inc.length?'<span class="badge">'+inc.length+'</span>':'');
@@ -404,10 +416,68 @@ $('mdb').addEventListener('change',e=>{const t=e.target;
 $('mdb').addEventListener('input',e=>{if(e.target.id==='trCash')TS.cash=e.target.value});
 $('trbtn').onclick=openTrade;$('pzbtn').onclick=()=>act(V.hold?'resume':'pause');
 
+
+/* ---- accelerated round: each team picks the unsold players it wants; only those come back to the block ---- */
+const accB=b=>Math.max(.25,Math.round(b/2/.25)*.25);
+let PK=new Set(),pkSig='',pkKey='';
+function pickUI(){const pk=V.pick,t=myT(),rd=pk.ready;$('lot').textContent='Accelerated round: pick players';
+  if(pkKey!==V.code+':'+pk.pool.length){pkKey=V.code+':'+pk.pool.length;PK=new Set(pk.mine);pkSig=''}
+  const sig=JSON.stringify([rd,t&&t.id,t&&rd[t.id]]);if(sig===pkSig)return;pkSig=sig;
+  const chips=pk.teams.map(id=>`<span class="chip">${crest(TM[id],24)}<span><b>${TM[id].s}${id===V.you.team?' ★':''}</b>${rd[id]?'✅ ready':'⏳ picking'}</span></span>`).join(''),
+  host=V.you.isHost?'<p><button class="btn g" id="pkGo" style="width:100%">Start the accelerated round now</button></p>':'';
+  let body;
+  if(!t)body='<p class="s">You are watching. Team owners are choosing which unsold players come back.</p>';
+  else if(t.sq.length>=V.maxsq)body='<p class="s">Your squad is full, so you have nothing to pick.</p>';
+  else if(rd[t.id])body=`<p class="s">You are ready with <b>${PK.size}</b> player${PK.size==1?'':'s'} picked. The round starts when every team is ready.</p><p><button class="btn g" id="pkEdit">Change my picks</button></p>`;
+  else body=`<p class="s">Pick up to <b>${pk.max}</b> unsold players you want to bid for. Each shows his half base price. Only players someone picks come back; the most wanted come first. Your picks stay secret.</p><p class="s"><b id="pkc">${PK.size}</b>/${pk.max} picked. Squad ${t.sq.length}/${V.maxsq}, purse ${cr(t.purse)}.</p>`+
+    [...pk.pool].sort((a,b)=>P[b].q-P[a].q).map(i=>`<label class="tk"><input type="checkbox" data-pk="${i}" ${PK.has(i)?'checked':''}><b>${esc(P[i].n)} <small>${P[i].r}${P[i].bt?' • '+BTN[P[i].bt]:''} • ${P[i].c} • rated ${P[i].q}</small></b><small>${cr(accB(P[i].b))}</small></label>`).join('')+
+    '<p><button class="btn" id="pkReady" style="width:100%">I am ready</button></p>';
+  $('pick').innerHTML='<h2>Accelerated round</h2><div class="strip">'+chips+'</div>'+body+host}
+$('pick').addEventListener('change',e=>{const c=e.target;if(!c.dataset||c.dataset.pk===undefined)return;const v=+c.dataset.pk;
+  if(c.checked){if(PK.size>=V.pick.max){c.checked=false;return toast('Pick at most '+V.pick.max+' players')}PK.add(v)}else PK.delete(v);$('pkc').textContent=PK.size});
+$('pick').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.id==='pkReady'){b.disabled=true;act('ready',{ids:[...PK]})}else if(b.id==='pkEdit'){pkSig='';act('unready')}
+  else if(b.id==='pkGo'&&confirm('Start now? Teams that are not ready keep the picks they have saved.'))act('accgo')});
+
+/* ---- sets: every set with its players and what happened to each ---- */
+async function openSets(){let d;try{d=await(await fetch('/sets?code='+encodeURIComponent(ME.code)+'&pid='+encodeURIComponent(ME.pid))).json()}catch(e){return toast('No connection to the server.')}
+  if(d.err)return toast(d.err);
+  const sold={};V.teams.forEach(t=>t.sq.forEach(([i,paid])=>sold[i]={t:t.id,paid}));const un=new Set(V.un),cur=V.phase==='auction'&&V.stage!=='pick'?V.cur:-1,sets=d.names.map(()=>[]);
+  d.setOf.forEach((k,i)=>{if(k>=0)sets[k].push(i)});
+  const st=i=>sold[i]?`<span class="st-s">${TM[sold[i].t].s}<br>${cr(sold[i].paid)}</span>`:i===cur?'<span class="st-n">On the block</span>':un.has(i)?'<span class="st-u">Unsold</span>':'<span class="st-w">Yet to come</span>',
+  curSet=cur>=0?d.setOf[cur]:-1;
+  modal('<h2>Sets and players</h2><p class="s">Tap a set to see its players and what happened to each. '+(V.acc?'The accelerated round is running; unsold players still waiting in it show as "Yet to come".':'')+'</p>'+d.names.map((n,k)=>{const L=sets[k].sort((a,b)=>P[b].q-P[a].q),c=L.filter(i=>sold[i]).length,u=L.filter(i=>un.has(i)&&!sold[i]).length;
+    return `<details ${k===curSet?'open':''}><summary><b>${esc(n)}</b><small>${L.length} players • ${c} sold • ${u} unsold</small></summary>`+L.map(i=>`<div class="pr"><span class="av2">${face(P[i],36)}</span><b>${esc(P[i].n)}<br><small>${P[i].r}${P[i].bt?' • '+BTN[P[i].bt]:''} • ${P[i].c} • rated ${P[i].q} • base ${cr(P[i].b)}</small></b>${st(i)}</div>`).join('')+'</details>'}).join(''))}
+$('setsb').onclick=openSets;
+
+/* ---- chat and emoji reactions ---- */
+const EMOS=['😀','😂','🤣','😍','😎','🤔','😮','😭','😡','🥳','👍','👏','🙏','🤝','🔥','💰','🏏','🏆','🎉','💯'],QR=['🔥','👏','😂','😮','💰','🤝'],ONE=/^\p{Extended_Pictographic}\uFE0F?$/u;
+let lastCid=0,readCid=0,chatOpen=false,chatInit=false;
+$('emo').innerHTML=EMOS.map(e=>`<button type="button" data-e="${e}">${e}</button>`).join('');
+$('react').innerHTML=QR.map(e=>`<button type="button" data-q="${e}">${e}</button>`).join('');
+function floatEmoji(e){const s=document.createElement('span');s.className='fl';s.textContent=e;s.style.left=(8+Math.random()*80)+'vw';document.body.appendChild(s);setTimeout(()=>s.remove(),2300)}
+function drawChat(){const el=$('cmsgs'),L=V.chat||[],near=el.scrollHeight-el.scrollTop-el.clientHeight<60;
+  el.innerHTML=L.length?L.map(m=>{const tm=m[2]?TM[m[2]]:null,col=tm?(tm.c1==='#1B2133'?tm.c2:tm.c1):'var(--mute)';return `<div class="c1${m[5]?' me':''}"><b style="color:${col}">${esc(m[1])}${tm?' • '+tm.s:''}</b> ${esc(m[3])}</div>`}).join(''):'<p class="s">No messages yet. Say hello!</p>';
+  if(near||!chatOpen)el.scrollTop=el.scrollHeight}
+function chatUpdate(){const L=V.chat||[];$('chatb').hidden=false;$('react').hidden=V.phase!=='auction';
+  const fresh=L.filter(m=>m[0]>lastCid);
+  if(fresh.length){if(chatInit)fresh.forEach(m=>{const t=m[3].trim();if(ONE.test(t))floatEmoji(t)});lastCid=L[L.length-1][0]}
+  chatInit=true;if(chatOpen)readCid=lastCid;
+  const un=L.filter(m=>m[0]>readCid&&!m[5]).length,b=$('cbadge');b.hidden=!un;b.textContent=un;
+  if(fresh.length||!$('cmsgs').dataset.ready){$('cmsgs').dataset.ready=1;drawChat()}}
+$('chatb').onclick=()=>{chatOpen=!chatOpen;$('chat').hidden=!chatOpen;if(chatOpen){readCid=lastCid;$('cbadge').hidden=true;drawChat();setTimeout(()=>$('ctx').focus(),60)}};
+$('cclose').onclick=()=>$('chatb').click();
+const sendChat=()=>{const v=$('ctx').value.trim();if(!v)return;$('ctx').value='';act('chat',{text:v})};
+$('csend').onclick=sendChat;$('ctx').onkeydown=e=>{if(e.key==='Enter')sendChat()};
+$('emo').onclick=e=>{const b=e.target.closest('[data-e]');if(b){$('ctx').value+=b.dataset.e;$('ctx').focus()}};
+$('react').onclick=e=>{const b=e.target.closest('[data-q]');if(b)act('chat',{text:b.dataset.q})};
+function exportCSV(){const rows=[['Team','Owner','Player','Role','Country','Price (Cr)']];V.teams.forEach(t=>t.sq.forEach(([i,pd])=>rows.push([TM[t.id].n,t.owner,P[i].n,P[i].r,P[i].c,pd])));
+  const csv=rows.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')).join('\n'),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='ipl-auction-'+V.code+'.csv';a.click()}
+
 function ending(){const r=V.teams.map(t=>{const o=tObj(t);return{t,o,s:perf(o).total}}).sort((a,b)=>b.s-a.s);$('lot').textContent='';
   $('end').innerHTML=`<h2>Auction complete</h2><p class="s">Ranked out of 100 on best XI, batting, bowling, balance, bench and star power. Tap a team for its squad.</p>`+
   r.map((x,k)=>`<button class="lb" data-id="${x.t.id}"><span style="font:900 20px Georgia">${k+1}</span>${crest(TM[x.t.id],44)}<b>${TM[x.t.id].n}${x.t.id===V.you.team?' ★':''}<br><small style="color:var(--mute)">${esc(x.t.owner)} • ${x.t.sq.length} players • ${cr(x.t.purse)} left</small></b><span style="font:900 22px Georgia;color:var(--gold)">${x.s}</span></button>`).join('')+
-  `<p class="s">${V.un.length} players went unsold.</p><p><button class="btn g" onclick="$('leave').click()">New game</button></p>`;
+  `<p class="s">${V.un.length} players stayed unsold, even after the accelerated round. Tap Sets (top right) to see every set and player.</p><p><button class="btn" onclick="exportCSV()">Download results (CSV)</button> <button class="btn g" onclick="$('leave').click()">New game</button></p>`;
   if(ovKey!=='end'){ovKey='end';confetti([TM[r[0].t.id].c1,TM[r[0].t.id].c2,'#f2b632'])}}
 $('end').onclick=e=>{const b=e.target.closest('.lb');if(b)squad(b.dataset.id)};
 </script>
