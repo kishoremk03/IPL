@@ -10,8 +10,9 @@ const path = require('path');
 const crypto = require('crypto');
 
 const TEAM_IDS = ['mi','csk','rcb','kkr','dc','pbks','rr','srh','gt','lsg'];
-const DEFSQ = 25, SQ_OPTS = [15, 18, 21, 25], OSL = 5, PURSE = 100;
+const DEFSQ = 25, SQ_OPTS = [15, 18, 21, 25], PURSE = 100, PAUSE_MS = 180000, PAUSES_EACH = 3;
 const msq = s => s.maxsq || DEFSQ;
+const osl = s => Math.floor(msq(s) / 3);      // overseas cap: 15 -> 5 (10 Indian), 18 -> 6 (12), 21 -> 7 (14), 25 -> 8 (17)
 const BID_MS = 10000, BUMP_MS = 10000, RES_MS = 3000, TRADE_TTL = 90000;
 
 const DATA=`Tim David|BAT|AUS|1.0|82||rcb|16|1|1
@@ -381,7 +382,7 @@ function enter(r) {
 function act(s, r) {
   const pl = s.players[r.pid], isHost = r.pid === s.host, now = Date.now();
   if (s.trades) s.trades = s.trades.filter(t => now < t.at + TRADE_TTL);
-  if (s.pausedAt && ['bid', 'pass', 'sell', 'skipset'].includes(r.a)) throw new Error('Auction is paused while a trade offer is open.');
+  if (s.pausedAt && ['bid', 'pass', 'sell', 'skipset'].includes(r.a)) throw new Error('The auction is paused.');
   switch (r.a) {
     case 'claim': {
       if (s.phase !== 'lobby') throw new Error('Auction already started.');
@@ -407,6 +408,18 @@ function act(s, r) {
     case 'skipset':
       if (!isHost || s.stage !== 'bid') throw new Error('Host only.');
       s.skipSet = s.setOf[s.cur]; s.endsAt = now; tick(s); break;
+    case 'pause': {
+      if (s.phase !== 'auction') throw new Error('Nothing to pause yet.');
+      if (!pl.team && !isHost) throw new Error('Only team owners and the host can pause.');
+      if (s.hold) throw new Error('Already paused by ' + s.hold.name + '.');
+      if ((pl.pz || 0) >= PAUSES_EACH) throw new Error('You have used all ' + PAUSES_EACH + ' of your pauses.');
+      pl.pz = (pl.pz || 0) + 1;
+      s.hold = { by: r.pid, name: pl.name, team: pl.team, until: now + PAUSE_MS };
+      s.log.push('⏸ ' + pl.name + ' paused the auction.'); break; }
+    case 'resume':
+      if (!s.hold) break;
+      if (r.pid !== s.hold.by && !isHost) throw new Error('Only ' + s.hold.name + ' or the host can resume.');
+      s.log.push('▶ Auction resumed.'); s.hold = null; break;
     case 'tpropose': proposeTrade(s, pl, r, now); break;
     case 'taccept': case 'tdecline': case 'tcancel': answerTrade(s, pl, r, now); break;
     case 'end':
@@ -442,14 +455,14 @@ function tradeWhy(s, t, now) {
   const aSq = ha.length - t.gp.length + t.rp.length, bSq = hb.length - t.rp.length + t.gp.length;
   if (aSq > msq(s)) return t.from.toUpperCase() + ' squad would exceed ' + msq(s) + '.';
   if (bSq > msq(s)) return t.to.toUpperCase() + ' squad would exceed ' + msq(s) + '.';
-  if (osOf(ha.filter(i => t.gp.indexOf(i) < 0).concat(t.rp)) > OSL) return t.from.toUpperCase() + ' would have too many overseas players.';
-  if (osOf(hb.filter(i => t.rp.indexOf(i) < 0).concat(t.gp)) > OSL) return t.to.toUpperCase() + ' would have too many overseas players.';
+  if (osOf(ha.filter(i => t.gp.indexOf(i) < 0).concat(t.rp)) > osl(s)) return t.from.toUpperCase() + ' would have too many overseas players.';
+  if (osOf(hb.filter(i => t.rp.indexOf(i) < 0).concat(t.gp)) > osl(s)) return t.to.toUpperCase() + ' would have too many overseas players.';
   if (s.stage === 'bid' && s.lead && (s.lead === t.from || s.lead === t.to)) {   // the leader must still be able to pay for the lot
     const isA = s.lead === t.from, T = isA ? A : B, left = isA ? ha.filter(i => t.gp.indexOf(i) < 0).concat(t.rp) : hb.filter(i => t.rp.indexOf(i) < 0).concat(t.gp);
     const purse = isA ? A.purse - net : B.purse + net, nm = s.lead.toUpperCase();
     if (purse < s.bid - 1e-9) return nm + ' is leading the bid and needs ' + s.bid + ' Cr purse to cover it.';
     if (left.length >= msq(s)) return nm + ' needs a free squad slot for the player it is bidding on.';
-    if (P[s.cur].c !== 'IND' && osOf(left) >= OSL) return nm + ' needs an overseas slot for the player it is bidding on.';
+    if (P[s.cur].c !== 'IND' && osOf(left) >= osl(s)) return nm + ' needs an overseas slot for the player it is bidding on.';
   }
   return '';
 }
@@ -526,7 +539,7 @@ function why(s, tid, amt) {
   if (!t) return 'No team';
   if (s.passed.includes(tid)) return 'Passed';
   if (t.sq.length >= msq(s)) return 'Squad full';
-  if (p.c !== 'IND' && t.os >= OSL) return 'Overseas full';
+  if (p.c !== 'IND' && t.os >= osl(s)) return 'Overseas full';
   if (t.purse - amt < Math.max(0, Math.min(14, msq(s)) - t.sq.length) * .5) return 'Purse low';
   return '';
 }
@@ -554,7 +567,9 @@ function earlyClose(s, now) {
 /* a trade offer that is open freezes the lot clock; when the last one closes the clock resumes where it stopped */
 function syncPause(s, now) {
   if (s.phase !== 'auction') return false;
-  const open = s.trades && s.trades.length > 0;
+  let ch = false;
+  if (s.hold && now >= s.hold.until) { s.hold = null; ch = true; s.log.push('Pause ended automatically.'); }
+  const open = (s.trades && s.trades.length > 0) || !!s.hold;      // an open trade offer or a manual pause freezes the clock
   if (open && !s.pausedAt) { s.pausedAt = now; return true; }
   if (!open && s.pausedAt) {
     const d = now - s.pausedAt;
@@ -562,13 +577,13 @@ function syncPause(s, now) {
     if (s.resUntil) s.resUntil += d;
     s.pausedAt = 0; return true;
   }
-  return false;
+  return ch;
 }
 
 const due = s => {
   const n = Date.now();
   if (s.phase !== 'auction') return false;
-  if (s.pausedAt) return !(s.trades || []).some(t => n < t.at + TRADE_TTL);   // all offers expired: resume
+  if (s.pausedAt) return !(s.trades || []).some(t => n < t.at + TRADE_TTL) && !(s.hold && n < s.hold.until);   // nothing left holding the clock: resume
   return (s.stage === 'bid' && n >= s.endsAt) || (s.stage === 'res' && n >= s.resUntil);
 };
 
@@ -594,7 +609,7 @@ function settle(s, now) {
   const p = P[s.cur]; let sold = false;
   if (s.lead) {
     const t = s.tm[s.lead];
-    if (t.sq.length < msq(s) && !(p.c !== 'IND' && t.os >= OSL) && t.purse >= s.bid) {
+    if (t.sq.length < msq(s) && !(p.c !== 'IND' && t.os >= osl(s)) && t.purse >= s.bid) {
       t.purse = r2(t.purse - s.bid); t.sq.push([s.cur, s.bid]); if (p.c !== 'IND') t.os++;
       sold = true; s.res = { k: 'sold', i: s.cur, t: s.lead, a: s.bid };
       s.log.push('SOLD! ' + p.n + ' to ' + s.lead.toUpperCase() + ' for ' + s.bid + ' Cr');
@@ -624,7 +639,7 @@ function finish(s) { s.phase = 'done'; s.stage = 'done'; s.log.push('Auction com
 function view(s, pid) {
   const me = s.players[pid];
   return {
-    ok: 1, now: Date.now(), seq: s.seq, maxsq: msq(s), bidMs: BID_MS, bumpMs: BUMP_MS, paused: s.phase === 'auction' && !!s.pausedAt, pausedAt: s.pausedAt || 0, pend: (s.trades || []).slice(0, 1).map(t => [t.from, t.to])[0] || null, code: s.code, phase: s.phase, stage: s.stage || null, pool: s.pool,
+    ok: 1, now: Date.now(), seq: s.seq, maxsq: msq(s), bidMs: BID_MS, bumpMs: BUMP_MS, osl: osl(s), pzLeft: PAUSES_EACH - (me.pz || 0), hold: s.hold ? { name: s.hold.name, team: s.hold.team, until: s.hold.until, mine: s.hold.by === pid } : null, paused: s.phase === 'auction' && !!s.pausedAt, pausedAt: s.pausedAt || 0, pend: (s.trades || []).slice(0, 1).map(t => [t.from, t.to])[0] || null, code: s.code, phase: s.phase, stage: s.stage || null, pool: s.pool,
     you: { pid, team: me.team, isHost: pid === s.host },
     players: Object.entries(s.players).map(([k, p]) => ({ name: p.name, team: p.team, host: k === s.host })),
     teams: s.tm ? Object.entries(s.tm).map(([id, t]) => ({ id, owner: t.owner, purse: t.purse, os: t.os, sq: t.sq })) : [],

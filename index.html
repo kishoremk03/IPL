@@ -209,7 +209,7 @@ input.tx{width:100%;padding:12px;border-radius:12px;border:1px solid var(--ln);b
 
 <section id="home">
   <h2>Multiplayer auction</h2>
-  <p class="s">One person creates a room and shares the 4-letter code. Everyone else joins on their own phone, picks a team and bids live. Purse ₹100 Cr, squads of 15 to 25, at most 5 overseas.</p>
+  <p class="s">One person creates a room and shares the 4-letter code. Everyone else joins on their own phone, picks a team and bids live. Purse ₹100 Cr. The host picks the squad size (15, 18, 21 or 25); at most one third of a squad can be overseas (15 = 10 Indian + 5 overseas, 18 = 12 + 6, 21 = 14 + 7, 25 = 17 + 8).</p>
   <input class="tx" id="nm" maxlength="20" placeholder="Your name" autocomplete="off">
   <button class="btn" id="mk" style="width:100%;margin:6px 0">Create a room</button>
   <p class="s" style="text-align:center">or join a friend</p>
@@ -222,6 +222,7 @@ input.tx{width:100%;padding:12px;border-radius:12px;border:1px solid var(--ln);b
   <p class="s" style="margin:0;text-align:center">Room code, share it</p><div class="big" id="rc"></div>
   <div class="strip" id="pl"></div>
   <h2>Pick your team</h2>
+  <p class="s" id="rule"></p>
   <p class="s">Tap a free team to claim it, tap yours again to release it. People without a team can watch.</p>
   <div class="grid" id="tg"></div>
   <div id="hostbox" hidden>
@@ -239,7 +240,7 @@ input.tx{width:100%;padding:12px;border-radius:12px;border:1px solid var(--ln);b
   <p class="cm" id="cm"></p>
   <div id="host" class="skiprow" hidden><button class="btn g" id="sell"></button><button class="btn g" id="skset">⏭⏭ Skip set</button><button class="btn g" id="endA">End</button></div>
   <div class="ctl" id="ctl"></div>
-  <div class="skiprow" id="trrow" hidden><button class="btn g" id="trbtn" style="flex:1">🔄 Trade</button></div>
+  <div class="skiprow" id="trrow" hidden><button class="btn g" id="pzbtn" style="flex:1"></button><button class="btn g" id="trbtn" style="flex:1">🔄 Trade</button></div>
   <p class="s" style="margin:12px 0 2px">Teams (tap for squad)</p>
   <div class="strip" id="strip"></div>
 </section>
@@ -304,12 +305,12 @@ $('leave').onclick=()=>{try{localStorage.removeItem('iplmp')}catch(e){}location.
 /* ---- helpers ---- */
 const inc=b=>b<2?.25:b<5?.5:1,nextBid=()=>V.lead?Math.round((V.bid+inc(V.bid))*100)/100:P[V.cur].b;
 const myT=()=>V.you.team?V.teams.find(t=>t.id===V.you.team):null;
-const whyC=(t,amt)=>{const p=P[V.cur];return V.passed.includes(t.id)?'Passed':t.sq.length>=V.maxsq?'Squad full':(p.c!=='IND'&&t.os>=5)?'Overseas full':t.purse-amt<Math.max(0,14-t.sq.length)*.5?'Purse low':''};
+const whyC=(t,amt)=>{const p=P[V.cur];return V.passed.includes(t.id)?'Passed':t.sq.length>=V.maxsq?'Squad full':(p.c!=='IND'&&t.os>=V.osl)?'Overseas full':t.purse-amt<Math.max(0,14-t.sq.length)*.5?'Purse low':''};
 const tObj=t=>({...TM[t.id],purse:t.purse,sq:t.sq.map(([i,paid])=>({...P[i],paid}))});
 function modal(h){TOPEN=false;$('mdb').innerHTML=h+'<p><button class="btn g" onclick="$(\'md\').style.display=\'none\'">Close</button></p>';$('md').style.display='flex'}
 const closeMd=()=>{$('md').style.display='none';TOPEN=false};let TOPEN=false;
 $('md').onclick=e=>{if(e.target.id==='md')closeMd()};
-function squad(id){const t=V.teams.find(x=>x.id===id),m=TM[id];modal(`<div style="display:flex;gap:10px;align-items:center">${crest(m,48)}<div><b>${m.n}</b><br><small style="color:var(--mute)">${esc(t.owner)} • Purse ${cr(t.purse)} • Overseas ${t.os}/5</small></div></div>`+(t.sq.length?t.sq.map(([i,paid])=>`<div class="pr"><span class="av2">${face(P[i],36)}</span><b>${esc(P[i].n)} <small>${P[i].r}</small></b><b style="flex:none">${cr(paid)}</b></div>`).join(''):'<p class="s">No players yet.</p>'))}
+function squad(id){const t=V.teams.find(x=>x.id===id),m=TM[id];modal(`<div style="display:flex;gap:10px;align-items:center">${crest(m,48)}<div><b>${m.n}</b><br><small style="color:var(--mute)">${esc(t.owner)} • Purse ${cr(t.purse)} • Overseas ${t.os}/${V.osl||5}</small></div></div>`+(t.sq.length?t.sq.map(([i,paid])=>`<div class="pr"><span class="av2">${face(P[i],36)}</span><b>${esc(P[i].n)} <small>${P[i].r}</small></b><b style="flex:none">${cr(paid)}</b></div>`).join(''):'<p class="s">No players yet.</p>'))}
 $('strip').onclick=e=>{const b=e.target.closest('.chip');if(b)squad(b.dataset.id)};
 
 /* ---- screens ---- */
@@ -321,7 +322,7 @@ function lobby(){$('rc').textContent=V.code;
   $('pl').innerHTML=V.players.map(p=>`<span class="chip">${esc(p.name)}${p.host?' 👑':''}${p.team?' • '+TM[p.team].s:''}</span>`).join('');
   $('tg').innerHTML=T.map(t=>{const o=V.players.find(p=>p.team===t.id),mine=V.you.team===t.id;return `<button class="tc ${o?'h':''}" data-id="${t.id}" style="--c:${t.c1}">${crest(t,64)}<small>${t.n}</small><em>${o?(mine?'You':esc(o.name)):'Free, tap to pick'}</em></button>`}).join('');
   $('hostbox').hidden=!V.you.isHost;$('wait').hidden=V.you.isHost;if(document.activeElement!==$('oP'))$('oP').value=V.pool;if(document.activeElement!==$('oS'))$('oS').value=V.maxsq;
-  $('sqn').textContent=V.maxsq}
+  $('sqn').textContent=V.maxsq;$('rule').innerHTML=`Squad of <b>${V.maxsq}</b>: at least <b>${V.maxsq-V.osl} Indian</b>, at most <b>${V.osl} overseas</b> players.`}
 $('tg').onclick=e=>{const b=e.target.closest('.tc');if(!b)return;act(V.you.team===b.dataset.id?'unclaim':'claim',{team:b.dataset.id})};
 $('oP').onchange=e=>act('opt',{pool:e.target.value});$('oS').onchange=e=>act('opt',{sq:+e.target.value});
 $('go').onclick=()=>act('start');
@@ -333,7 +334,7 @@ function game(prev){const p=P[V.cur],t=myT();
   if(lastBid!==V.bid&&V.bid){a.classList.add('pop');setTimeout(()=>a.classList.remove('pop'),160);SFX.bid()}lastBid=V.bid;
   $('ldr').innerHTML=!V.lead?'<small style="color:var(--mute)">No bids yet</small>':`<div class="coin">${crest(TM[V.lead],44)}</div><div style="padding-right:56px"><b>${TM[V.lead].s}</b><small>${esc(V.teams.find(x=>x.id===V.lead).owner)}</small></div>`;
   $('cm').textContent=V.log[V.log.length-1]||'';
-  if(V.paused){const pe=V.pend;$('cm').textContent='⏸ Auction paused: '+(pe?TM[pe[0]].s+' and '+TM[pe[1]].s:'two teams')+' have a trade offer open. Bidding resumes when it is answered.'}
+  if(V.paused){const pe=V.pend,hd=V.hold;$('cm').textContent='⏸ Auction paused'+(hd?' by '+hd.name+(hd.team?' ('+TM[hd.team].s+')':'')+'. Look at squads or trade meanwhile; it resumes when they tap Resume, or automatically after 3 minutes.':'')+(pe?(hd?' ':': ')+TM[pe[0]].s+' and '+TM[pe[1]].s+' have a trade offer open.':'')}
   const live=V.stage==='bid'&&!V.paused;
   if(t){const w=whyC(t,nb),can=live&&V.lead!==t.id&&!w;
     $('ctl').innerHTML=`<div class="tp"><button class="bb" style="--c:${TM[t.id].c1}" data-amt="${nb}" ${can?'':'disabled'}>${crest(TM[t.id],28)}<span>${TM[t.id].s}<br><small>${V.lead===t.id?'You lead':w||'Bid '+cr(nb)}</small></span></button><button class="btn g pass" ${live&&V.lead!==t.id&&!V.passed.includes(t.id)?'':'disabled'}>Pass</button></div>`}
@@ -363,7 +364,11 @@ let TS={to:'',gp:[],rp:[],dir:'pay',cash:'',sig:''},seenIn=new Set();
 const liveTr=()=>(V.trades||[]).filter(t=>Date.now()+off<t.exp);
 const pn=i=>esc(P[i].n);
 const side=(l,c)=>{const a=l.map(i=>pn(i)+' <small>('+P[i].r+')</small>');if(c>0)a.push('<b>'+cr(c)+' purse</b>');return a.length?a.join(' + '):'nothing'};
-function tradeHook(){const t=myT();$('trrow').hidden=!t||V.phase!=='auction';if(!t)return;
+function tradeHook(){const t=myT(),hd=V.hold,own=!!t||V.you.isHost;$('trrow').hidden=!own||V.phase!=='auction';$('trbtn').hidden=!t;
+  const pb=$('pzbtn');pb.hidden=!own;
+  if(hd){pb.textContent=hd.mine||V.you.isHost?'▶ Resume auction':'⏸ Paused by '+hd.name;pb.disabled=!(hd.mine||V.you.isHost)}
+  else{pb.textContent='⏸ Pause ('+Math.max(0,V.pzLeft)+' left)';pb.disabled=V.paused||V.pzLeft<=0}
+  if(!t)return;
   const inc=liveTr().filter(x=>x.to===t.id);
   $('trbtn').innerHTML='🔄 Trade'+(inc.length?'<span class="badge">'+inc.length+'</span>':'');
   inc.forEach(x=>{if(!seenIn.has(x.id)){seenIn.add(x.id);toast(TM[x.from].s+' sent you a trade offer',true);SFX.lot()}});
@@ -397,7 +402,7 @@ $('mdb').addEventListener('change',e=>{const t=e.target;
   else if(t.dataset&&t.dataset.s){const a=t.dataset.s==='g'?TS.gp:TS.rp,v=+t.value;
     if(t.checked){if(a.length>=2){t.checked=false;return toast('Max 2 players per side')}a.push(v)}else a.splice(a.indexOf(v),1)}});
 $('mdb').addEventListener('input',e=>{if(e.target.id==='trCash')TS.cash=e.target.value});
-$('trbtn').onclick=openTrade;
+$('trbtn').onclick=openTrade;$('pzbtn').onclick=()=>act(V.hold?'resume':'pause');
 
 function ending(){const r=V.teams.map(t=>{const o=tObj(t);return{t,o,s:perf(o).total}}).sort((a,b)=>b.s-a.s);$('lot').textContent='';
   $('end').innerHTML=`<h2>Auction complete</h2><p class="s">Ranked out of 100 on best XI, batting, bowling, balance, bench and star power. Tap a team for its squad.</p>`+
