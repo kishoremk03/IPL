@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>IPL Auction 3D - Multiplayer</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;800&family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+<style>
+
+:root{color-scheme:dark;--bg:#0b1220;--bg2:#131d33;--ink:#f4efe0;--mute:#8d9ab5;--gold:#f2b632;--ok:#3ddc97;--bad:#ff5d6c;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;min-height:100%;background:radial-gradient(1200px 700px at 50% -10%,#1d2f5c 0%,var(--bg) 60%) fixed;color:var(--ink);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer;border:0}
+button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+header{display:flex;align-items:center;gap:10px;padding:10px 14px}
+header b{font-family:Georgia,serif;font-size:20px;letter-spacing:.5px;color:var(--gold);flex:1}
+header span{color:var(--mute);font-size:13px}
+.btn{background:var(--gold);color:#241a00;font-weight:800;padding:12px 20px;border-radius:12px}
+.btn.g{background:#243252;color:var(--ink);padding:7px 12px;font-size:13px;font-weight:600}
+section{padding:6px 14px 20px;max-width:980px;margin:auto}
+h2{font-family:Georgia,serif;margin:6px 0}
+p.s{color:var(--mute);margin:4px 0 12px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.tc{background:var(--bg2);border:2px solid #243252;border-radius:16px;padding:10px 6px;text-align:center;transition:transform .2s,border-color .2s}
+.tc:hover{transform:translateY(-3px) rotateX(8deg)}
+.tc small{display:block;font-size:12px;margin-top:4px}
+.tc em{font-style:normal;font-size:11px;color:var(--mute)}
+.tc.h{border-color:var(--gold);box-shadow:0 0 0 2px #f2b63233,0 8px 24px #f2b63222}
+.tc.h em{color:var(--gold);font-weight:700}
+/* stage */
+.stage{perspective:900px;position:relative;height:330px;display:flex;justify-content:center;align-items:center;overflow:hidden;border-radius:20px;background:linear-gradient(#0d1730,#16264a);border:1px solid #243252}
+.floor{position:absolute;left:-20%;right:-20%;bottom:-30px;height:200px;transform:rotateX(68deg);transform-origin:bottom;background:
+repeating-linear-gradient(90deg,#ffffff14 0 2px,transparent 2px 46px),repeating-linear-gradient(0deg,#ffffff14 0 2px,transparent 2px 46px),linear-gradient(#2a8f5a55,#14522f99)}
+.spot{position:absolute;top:-40px;width:260px;height:380px;background:linear-gradient(#fff3,#fff0);clip-path:polygon(40% 0,60% 0,100% 100%,0 100%);filter:blur(6px)}
+.float{transform-style:preserve-3d;animation:fl 4s ease-in-out infinite}
+@keyframes fl{50%{transform:translateY(-10px)}}
+.card{--rx:0deg;--ry:0deg;width:210px;height:270px;transform-style:preserve-3d;transform:rotateX(var(--rx)) rotateY(var(--ry));transition:transform .15s}
+.card.in{animation:flip .9s cubic-bezier(.2,1.3,.4,1)}
+@keyframes flip{from{transform:rotateY(-110deg) translateZ(-200px) scale(.6);opacity:0}}
+.face{position:absolute;inset:0;border-radius:18px;background:linear-gradient(155deg,#fff1b8,#f2b632 45%,#b87c10);color:#2a1d00;padding:14px;text-align:center;transform-style:preserve-3d;box-shadow:0 20px 40px #0008,inset 0 0 0 3px #fff6}
+.face .role{position:absolute;top:10px;left:10px;background:#2a1d00;color:var(--gold);font-weight:800;font-size:12px;padding:3px 8px;border-radius:8px;transform:translateZ(30px)}
+.face .rt{position:absolute;top:8px;right:12px;font-size:26px;font-weight:900;transform:translateZ(30px)}
+.av{width:96px;height:96px;margin:34px auto 8px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#2a1d00 140%);display:grid;place-items:center;font:900 36px Georgia,serif;color:#fff;transform:translateZ(60px);text-shadow:0 3px 8px #000a}
+.nm{font:900 20px/1.1 Georgia,serif;transform:translateZ(40px)}
+.meta{font-size:13px;margin-top:6px;font-weight:700;transform:translateZ(25px)}
+.base{position:absolute;bottom:12px;left:0;right:0;font-weight:800;font-size:13px;transform:translateZ(20px)}
+.coin{position:absolute;right:12px;top:12px;transform-style:preserve-3d;animation:spin 3s linear infinite}
+@keyframes spin{to{transform:rotateY(360deg)}}
+.bidbox{display:flex;gap:12px;align-items:center;margin:12px 0;background:var(--bg2);border-radius:16px;padding:12px 14px;border:1px solid #243252}
+.bidbox .amt{font:900 34px Georgia,serif;color:var(--gold);transition:transform .15s}
+.bidbox .amt.pop{transform:scale(1.25)}
+.bidbox small{color:var(--mute);display:block;font-size:12px}
+.bar{height:8px;background:#243252;border-radius:6px;overflow:hidden;margin:8px 0}
+.bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--ok),var(--gold),var(--bad))}
+.ctl{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.bb{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;background:var(--bg2);border:2px solid var(--c);font-weight:800;font-size:14px;text-align:left}
+.bb:disabled{opacity:.35;cursor:not-allowed}
+.bb:not(:disabled):active{transform:scale(.95)}
+.strip{display:flex;gap:8px;overflow-x:auto;padding:6px 0 10px}
+.chip{flex:0 0 auto;background:var(--bg2);border-radius:12px;padding:6px 10px;display:flex;gap:8px;align-items:center;border:1px solid #243252;font-size:12px}
+.chip.l{border-color:var(--gold);box-shadow:0 0 14px #f2b63255}
+.chip b{display:block;font-size:13px}
+#ov{position:fixed;inset:0;display:none;place-items:center;background:#000a;z-index:20;pointer-events:none}
+.stamp{font:900 64px Georgia,serif;border:8px solid;padding:6px 24px;border-radius:14px;animation:st .7s cubic-bezier(.2,1.6,.4,1) both;text-align:center;background:#0b1220cc}
+.stamp small{display:block;font:700 18px "Trebuchet MS",sans-serif}
+@keyframes st{from{transform:scale(4) rotate(-20deg);opacity:0}to{transform:scale(1) rotate(-6deg)}}
+#cf{position:fixed;inset:0;z-index:30;pointer-events:none}
+#md{position:fixed;inset:0;background:#000b;display:none;z-index:40;align-items:flex-end;justify-content:center}
+#md>div{background:var(--bg2);width:100%;max-width:560px;max-height:80%;overflow:auto;border-radius:20px 20px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #243252;font-size:14px}
+.lb{display:flex;gap:12px;align-items:center;background:var(--bg2);padding:10px 12px;border-radius:14px;margin:8px 0;border:1px solid #243252;width:100%;text-align:left}
+.lb:first-child{border-color:var(--gold);box-shadow:0 0 22px #f2b63244}
+.lb b{flex:1}
+.hb{display:flex;gap:6px}.av{overflow:hidden}.av svg{display:block}
+.sh{position:sticky;top:-16px;background:var(--bg2);padding:10px 0 4px;font:800 15px Georgia,serif;color:var(--gold)}
+.pr{display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #243252;font-size:13px}
+.av2{width:36px;height:36px;border-radius:50%;overflow:hidden;flex:none;background:#0b1220}.av2 svg{display:block}
+.pr b{flex:1}.pr small{color:var(--mute);font-weight:400}
+.ai{white-space:pre-wrap;line-height:1.5;font-size:14px;background:#0b1220;border-radius:12px;padding:10px;margin:8px 0}
+.err{color:var(--bad);font-size:13px;min-height:18px;margin:6px 0}
+:root{--ln:#243252;--st:linear-gradient(#0d1730,#16264a)}
+:root[data-th=day]{color-scheme:light;--bg:#f3efe4;--bg2:#fffaf0;--ink:#1d2433;--mute:#5b6577;--gold:#8a5600;--ln:#d8cfb8;--st:linear-gradient(#cfe3ff,#f6efd8)}
+:root[data-th=day] .btn:not(.g){color:#fff}
+:root[data-th=pitch]{--bg:#0c2a1a;--bg2:#12402a;--ink:#f1f7e8;--mute:#9cc3a8;--gold:#ffd24a;--ln:#1f6b45;--st:linear-gradient(#0a2b1c,#145a38)}
+html,body{background:radial-gradient(1200px 700px at 50% -10%,var(--bg2) 0%,var(--bg) 60%) fixed!important}
+.tc,.bidbox,.chip,.lb,.pr,.row{border-color:var(--ln)}.btn.g,.bar{background:var(--ln)}.stage{background:var(--st);border-color:var(--ln)}.ai{background:var(--bg)}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%}.t3 .floor,.t3 .spot{display:none}.float{position:relative;z-index:2}
+.cm{font:italic 15px Georgia,serif;min-height:22px;margin:4px 0;color:var(--gold)}.bh{display:flex;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--mute);min-height:24px}.bh span{background:var(--bg2);padding:2px 8px;border-radius:10px;border:1px solid var(--ln)}
+.opt{display:grid;gap:8px;margin:10px 0}.opt label{display:flex;gap:8px;align-items:center;font-size:14px}.rtn{background:var(--bg2);border:1px solid var(--ln);border-radius:14px;padding:10px;margin:8px 0}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+
+.stage{height:390px;background:radial-gradient(60% 40% at 50% 100%,#1f8a5a66,transparent),radial-gradient(30% 25% at 12% 8%,#fff6c855,transparent),radial-gradient(30% 25% at 88% 8%,#fff6c855,transparent),var(--st)}
+.stage::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,#000a 100%);z-index:3}
+.stage.pulse::before{content:"";position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(circle,#fff8,transparent 60%);animation:pl .6s ease-out both}
+@keyframes pl{from{opacity:1}to{opacity:0}}
+.card{width:220px;height:300px}
+.face{padding:12px;background:var(--cg);color:var(--ct,#1a1200);overflow:hidden;border:1px solid #fff5;box-shadow:0 24px 50px #000a,0 0 40px var(--glow),inset 0 0 0 3px #fff4}
+.tr-leg{--cg:linear-gradient(150deg,#fff6c9,#f6c443 38%,#b9770f 75%,#ffe48a);--glow:#f2b63288}
+.tr-eli{--cg:linear-gradient(150deg,#f4f1ff,#b7a4ff 40%,#5b3fd1 78%,#d2c8ff);--glow:#8a6cff77;--ct:#10083a}
+.tr-pro{--cg:linear-gradient(150deg,#f3f7fb,#aeb9c9 45%,#5f6b7e 80%,#e1e8f1);--glow:#9fb2cc55;--ct:#101826}
+.tr-rise{--cg:linear-gradient(150deg,#f7e0c6,#d08a4f 45%,#7d4417 80%,#f0c79d);--glow:#d08a4f55;--ct:#2b1405}
+.shine{position:absolute;inset:0;background:radial-gradient(circle at var(--mx,50%) var(--my,30%),#fff9,transparent 45%),repeating-linear-gradient(115deg,#ff000018,#ffff0018 6%,#00ff0018 12%,#00ffff18 18%,#ff00ff18 24%);mix-blend-mode:overlay;pointer-events:none;transform:translateZ(5px)}
+.face .rt{top:10px;right:12px;font:900 34px/1 Georgia,serif;text-align:center}.rt small{display:block;font:800 10px "Trebuchet MS",sans-serif;letter-spacing:1px}
+.tb{position:absolute;top:12px;left:12px;font:800 10px "Trebuchet MS",sans-serif;letter-spacing:2px;background:#0008;color:#fff;padding:3px 7px;border-radius:6px;transform:translateZ(30px)}
+.face .av{width:100px;height:100px;margin:30px auto 6px;border:3px solid #fff9;box-shadow:0 8px 22px #0006}
+.sts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:8px 4px 0;transform:translateZ(20px);font:800 10px "Trebuchet MS",sans-serif}
+.st{display:grid;grid-template-columns:1fr auto;text-align:left}.st i{grid-column:1/3;height:3px;background:#0004;border-radius:3px;position:relative;margin-top:2px}.st i::after{content:"";position:absolute;inset:0;width:var(--w);background:currentColor;border-radius:3px}
+.face .base{bottom:10px}
+.ab{display:grid;grid-template-columns:62px 1fr 48px;gap:6px;align-items:center;font-size:11px;margin:3px 0}.ab i{height:7px;background:var(--ln);border-radius:5px;overflow:hidden}.ab u{display:block;height:100%;background:linear-gradient(90deg,var(--ok),var(--gold))}
+.xi{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}.xi span{font-size:11px;background:var(--bg2);border:1px solid var(--ln);border-radius:8px;padding:2px 6px}
+.ac{background:var(--bg);border-radius:14px;padding:10px;margin:10px 0;border:1px solid var(--ln)}
+.tp{display:flex;gap:6px}.tp .bb{flex:1}.pass:disabled{opacity:.35}
+:root{--hd:"Oswald","Impact","Arial Narrow",sans-serif;--glass:color-mix(in srgb,var(--bg2) 72%,transparent)}
+body{font-family:"Inter","Trebuchet MS",system-ui,sans-serif;background:transparent!important}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(40% 30% at 15% 10%,#f2b63226,transparent),radial-gradient(40% 30% at 85% 15%,#3b82f633,transparent),radial-gradient(50% 40% at 50% 100%,#22c55e22,transparent);animation:au 14s ease-in-out infinite alternate}
+@keyframes au{to{transform:translateY(-3%) scale(1.08);opacity:.75}}
+body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.5;background-image:radial-gradient(#fff6 1px,transparent 1.5px),radial-gradient(#fff4 1px,transparent 1.5px);background-size:90px 90px,140px 140px;background-position:0 0,40px 60px;-webkit-mask-image:linear-gradient(#000,transparent 60%);mask-image:linear-gradient(#000,transparent 60%)}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:15;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);background:var(--glass);border-bottom:1px solid var(--ln)}
+header b{font:700 22px var(--hd);letter-spacing:2px;text-transform:uppercase;background:linear-gradient(90deg,#fff,var(--gold),#ff8a3d);-webkit-background-clip:text;background-clip:text;color:transparent}
+:root[data-th=day] header b{background:linear-gradient(90deg,#1d2433,var(--gold));-webkit-background-clip:text;background-clip:text}
+h2{font:700 26px var(--hd);letter-spacing:1.5px;text-transform:uppercase}
+section:not([hidden]){animation:sin .5s ease both}@keyframes sin{from{opacity:0;transform:translateY(14px)}}
+.btn{background:linear-gradient(180deg,#ffd76a,#f2b632 60%,#d9941c);box-shadow:0 6px 18px #f2b63244,inset 0 1px 0 #fff8;position:relative;overflow:hidden;font-family:var(--hd);letter-spacing:1px;transition:transform .15s,box-shadow .2s}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 26px #f2b63266}.btn:active{transform:scale(.97)}
+.btn:not(.g)::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,#fff7 50%,transparent 70%);transform:translateX(-120%);animation:sw 3.5s infinite}@keyframes sw{60%,100%{transform:translateX(120%)}}
+.btn.g{background:var(--glass);border:1px solid var(--ln);box-shadow:none;font-family:inherit;letter-spacing:0;backdrop-filter:blur(8px)}
+.tc{background:linear-gradient(160deg,color-mix(in srgb,var(--c,#888) 28%,var(--bg2)),var(--bg2));border:1px solid color-mix(in srgb,var(--c,#888) 50%,var(--ln));border-radius:20px;box-shadow:0 8px 22px #0005}
+.tc:hover{transform:translateY(-6px) scale(1.03);box-shadow:0 16px 34px color-mix(in srgb,var(--c,#888) 45%,transparent)}
+.tc.h{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 0 30px color-mix(in srgb,var(--c,#888) 60%,transparent)}
+.tc small{font-weight:700}.tc.h em::before{content:"✓ "}
+.stage{border-radius:26px;border:1px solid color-mix(in srgb,var(--gold) 45%,var(--ln));box-shadow:0 20px 60px #0008,0 0 40px #f2b63222,inset 0 0 60px #0006}
+.float::after{content:"";position:absolute;left:10%;right:10%;bottom:-26px;height:18px;background:radial-gradient(ellipse,#0009,transparent 70%);filter:blur(4px)}
+.bidbox{background:var(--glass);backdrop-filter:blur(12px);border-radius:20px;box-shadow:0 10px 30px #0004}
+.bidbox .amt{font:700 44px/1 var(--hd);text-shadow:0 0 24px #f2b63288;letter-spacing:1px}
+.coin{filter:drop-shadow(0 0 10px #f2b632aa)}
+.bar{height:10px;border-radius:8px;box-shadow:inset 0 1px 3px #0006}.bar i{box-shadow:0 0 14px #f2b63299}
+.bb{background:linear-gradient(135deg,color-mix(in srgb,var(--c) 38%,var(--bg2)),var(--bg2));border-radius:16px;box-shadow:0 6px 16px #0004;transition:transform .15s,box-shadow .2s;font-family:var(--hd);letter-spacing:.5px}
+.bb small{font-family:"Inter",sans-serif;opacity:.85}
+.bb:not(:disabled):hover{transform:translateY(-2px);box-shadow:0 10px 24px color-mix(in srgb,var(--c) 55%,transparent)}
+.cm{font:italic 600 16px "Inter",Georgia,serif;padding:8px 12px;border-left:3px solid var(--gold);background:var(--glass);border-radius:0 12px 12px 0;min-height:38px}
+.chip,.lb,.rtn,.ac,.opt label{background:var(--glass);backdrop-filter:blur(8px);border-radius:16px}
+.opt label{padding:10px 12px;border:1px solid var(--ln)}
+.chip.l{box-shadow:0 0 22px #f2b63288;transform:translateY(-2px)}
+#md>div{background:color-mix(in srgb,var(--bg2) 90%,transparent);backdrop-filter:blur(22px) saturate(1.3);border:1px solid var(--ln);border-bottom:0;box-shadow:0 -20px 60px #000a}
+#md>div::before{content:"";display:block;width:44px;height:5px;border-radius:5px;background:var(--ln);margin:-6px auto 10px}
+#ov{backdrop-filter:blur(4px);background:radial-gradient(circle,#0006,#000c)}
+.stamp{font-family:var(--hd);letter-spacing:3px;text-transform:uppercase;box-shadow:0 0 60px currentColor,inset 0 0 30px color-mix(in srgb,currentColor 30%,transparent)}
+.sh{font-family:var(--hd);letter-spacing:1px}.av2{box-shadow:0 0 0 2px var(--ln)}
+select{background:var(--bg2);color:var(--ink);border:1px solid var(--ln);border-radius:8px;padding:4px 6px;font:inherit}
+
+
+html{font-size:17px}section{max-width:1180px;padding:10px 18px 28px}header{padding:14px 20px}header b{font-size:28px}header span{font-size:15px}
+h2{font-size:32px}p.s{font-size:16px}.btn{padding:15px 26px;font-size:17px}.btn.g{padding:10px 16px;font-size:15px}
+.grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px}.tc small{font-size:15px}.tc em{font-size:13px}
+.stage{height:470px}.card{width:250px;height:350px}.face .av{width:118px;height:118px;margin:34px auto 6px}.nm{font-size:23px}.meta{font-size:13px}.meta.lbm{margin-top:2px;font-size:12px}
+.face .rt{font-size:40px}.sts{font:800 12px Inter,sans-serif;gap:6px 14px;margin-top:10px}.face .base{font-size:15px;bottom:12px}
+.bidbox{padding:18px 22px;margin:16px 0}.bidbox .amt{font-size:64px}.bidbox small{font-size:14px}.bar{height:14px}
+.cm{font-size:19px;min-height:50px;padding:12px 16px}.bh{font-size:14px}
+.skiprow{display:flex;gap:12px;align-items:center;margin:10px 0}.skiprow .btn{font-size:17px;padding:14px 22px;border:2px solid var(--gold)}.skiprow .s{margin:0}
+.ctl{grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}.bb{padding:14px 16px;font-size:19px;gap:12px}.bb small{font-size:14px}.tp .pass{font-size:16px;padding:0 18px}
+.chip{padding:10px 14px;font-size:14px}.chip b{font-size:16px}.pr{font-size:16px;padding:8px 0}.av2{width:46px;height:46px}.sh{font-size:19px}.row{font-size:16px}
+#md>div{max-width:760px;max-height:88%}.ai,.ab,.xi span,.opt label{font-size:15px}.ab{grid-template-columns:80px 1fr 56px}
+@media(min-width:1000px){.stage{height:520px}.card{width:280px;height:390px}.face .av{width:140px;height:140px}.bidbox .amt{font-size:78px}}
+@media(max-width:520px){html{font-size:16px}.stage{height:440px}.bidbox .amt{font-size:52px}.ctl{grid-template-columns:1fr}}
+
+
+@media(max-width:700px){
+html{font-size:15px}
+header{padding:6px 10px;gap:6px}
+header b{font-size:16px;letter-spacing:1px;white-space:nowrap;flex:none}
+header span{flex:1;min-width:0;font-size:11px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hb{gap:4px}.hb .btn.g{padding:6px 9px;font-size:12px;white-space:nowrap}
+section{padding:6px 10px 14px}
+.stage{height:262px;min-height:0;border-radius:18px}
+.card{zoom:.68}
+.bidbox{padding:8px 14px;margin:8px 0;gap:8px;border-radius:16px}
+.bidbox .amt{font-size:36px}.bidbox small{font-size:11px}
+.bar{height:8px;margin:4px 0}
+.cm{font-size:14px;min-height:0;padding:6px 10px;margin:4px 0}
+.bh{display:none}
+.skiprow{margin:6px 0;gap:8px}.skiprow .btn{padding:8px 12px;font-size:13px;flex:1}.skiprow .s{display:none}
+.ctl{grid-template-columns:1fr;gap:6px}
+.bb{padding:6px 12px;font-size:16px;gap:10px}.bb span br{display:none}.bb small{font-size:13px;margin-left:8px}
+.tp .pass{font-size:14px;padding:0 16px}
+.chip{padding:6px 10px}.chip b{font-size:13px}
+h2{font-size:22px}
+}
+
+.stage{height:360px}.stage .float{margin-top:0}
+input.tx{width:100%;padding:12px;border-radius:12px;border:1px solid var(--ln);background:var(--bg2);color:var(--ink);font:inherit;font-size:16px;margin:6px 0}
+.big{font:700 44px var(--hd);letter-spacing:8px;color:var(--gold);text-align:center;margin:4px 0}
+.row2{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.row2>*{flex:1}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--bad);color:#fff;padding:10px 16px;border-radius:12px;font-weight:700;z-index:60;display:none;max-width:90%;text-align:center}
+.tl{font:700 20px var(--hd);color:var(--mute);text-align:right}
+@media(max-width:700px){.stage{height:262px}}
+.tk{display:flex;gap:8px;align-items:center;padding:7px 9px;border:1px solid var(--ln);border-radius:10px;margin:4px 0;font-size:14px}
+.tk input{width:18px;height:18px;flex:none}.tk b{flex:1}.tk small{color:var(--mute)}
+.to{background:var(--glass);border:1px solid var(--ln);border-radius:14px;padding:10px;margin:8px 0;font-size:14px;line-height:1.45}
+.to .row2{margin:8px 0 0}.to .btn{padding:9px 12px;font-size:14px}
+.badge{background:var(--bad);color:#fff;border-radius:10px;padding:0 7px;margin-left:6px;font-size:12px}
+#toast.ok{background:var(--ok);color:#06251a}
+</style>
+</head>
+<body>
+<header><b>🏏 IPL Auction 3D</b><span id="lot"></span><div class="hb"><button class="btn g" id="leave" hidden>Leave</button></div></header>
+
+<section id="home">
+  <h2>Multiplayer auction</h2>
+  <p class="s">One person creates a room and shares the 4-letter code. Everyone else joins on their own phone, picks a team and bids live. Purse ₹100 Cr, squads of 15 to 25, at most 5 overseas.</p>
+  <input class="tx" id="nm" maxlength="20" placeholder="Your name" autocomplete="off">
+  <button class="btn" id="mk" style="width:100%;margin:6px 0">Create a room</button>
+  <p class="s" style="text-align:center">or join a friend</p>
+  <input class="tx" id="cd" maxlength="4" placeholder="Room code" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase;text-align:center;letter-spacing:6px">
+  <button class="btn g" id="jn" style="width:100%;padding:14px">Join room</button>
+  <p class="err" id="herr"></p>
+</section>
+
+<section id="lobby" hidden>
+  <p class="s" style="margin:0;text-align:center">Room code, share it</p><div class="big" id="rc"></div>
+  <div class="strip" id="pl"></div>
+  <h2>Pick your team</h2>
+  <p class="s">Tap a free team to claim it, tap yours again to release it. People without a team can watch.</p>
+  <div class="grid" id="tg"></div>
+  <div id="hostbox" hidden>
+    <div class="opt"><label>Player pool <select id="oP"><option value="sq26">IPL 2026 squads<option value="all">Everyone<option value="core">Classic</select></label>
+    <label>Players per team <select id="oS"><option value="15">15<option value="18">18<option value="21">21<option value="25">25</select></label></div>
+    <button class="btn" id="go" style="width:100%">Start auction</button>
+  </div>
+  <p class="s" id="wait" hidden>Waiting for the host to start… Squad size: <b id="sqn"></b> players per team.</p>
+</section>
+
+<section id="game" hidden>
+  <div class="stage"><div class="spot"></div><div class="floor"></div><div class="float"><div class="card" id="card"></div></div></div>
+  <div class="bidbox"><div style="flex:1"><small>Current bid</small><div class="amt" id="amt">₹0 Cr</div></div><div id="ldr" style="text-align:right"></div></div>
+  <div style="display:flex;align-items:center;gap:10px"><div class="bar" style="flex:1"><i id="bar"></i></div><div class="tl" id="tl"></div></div>
+  <p class="cm" id="cm"></p>
+  <div id="host" class="skiprow" hidden><button class="btn g" id="sell"></button><button class="btn g" id="skset">⏭⏭ Skip set</button><button class="btn g" id="endA">End</button></div>
+  <div class="ctl" id="ctl"></div>
+  <div class="skiprow" id="trrow" hidden><button class="btn g" id="trbtn" style="flex:1">🔄 Trade</button></div>
+  <p class="s" style="margin:12px 0 2px">Teams (tap for squad)</p>
+  <div class="strip" id="strip"></div>
+</section>
+
+<section id="end" hidden></section>
+<div id="ov"></div><canvas id="cf"></canvas><div id="md"><div id="mdb"></div></div><div id="toast"></div>
+
+<script>
+const T=[['mi','Mumbai Indians','MI','#004BA0','#D1AB3E'],['csk','Chennai Super Kings','CSK','#F9CD05','#0B4F9E'],['rcb','Royal Challengers Bengaluru','RCB','#C8102E','#F5C242'],['kkr','Kolkata Knight Riders','KKR','#3A225D','#E5C34A'],['dc','Delhi Capitals','DC','#17479E','#FFFFFF'],['pbks','Punjab Kings','PBKS','#D71920','#E4E6EA'],['rr','Rajasthan Royals','RR','#EA1A85','#FFFFFF'],['srh','Sunrisers Hyderabad','SRH','#FF822A','#1A1A1A'],['gt','Gujarat Titans','GT','#1B2133','#C79A52'],['lsg','Lucknow Super Giants','LSG','#A72056','#FFD23F']].map(a=>({id:a[0],n:a[1],s:a[2],c1:a[3],c2:a[4]}));
+const BTN={S:'Spin',M:'Mid-fast',F:'Fast'},LB={'Vaibhav Suryavanshi':[776,48.5,237.31],'Shubman Gill':[732,45.75,163.03],'Sai Sudharsan':[722,45.12,157.99],'Virat Kohli':[675,56.25,165.85],'Heinrich Klaasen':[624,48,160],'Ishan Kishan':[602,40.13,182.42],'KL Rahul':[593,45.62,174.41],'Mitchell Marsh':[563,43.31,163.19],'Abhishek Sharma':[563,40.21,204.73],'Jos Buttler':[526,37.57,152.46],'Dhruv Jurel':[515,36.79,154.65],'Prabhsimran Singh':[510,42.5,168.87],'Rajat Patidar':[501,41.75,192.69],'Shreyas Iyer':[498,55.33,168.81],'Cooper Connolly':[491,44.64,163.12]};
+let PH={};
+const hs=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))>>>0;return h};
+const SK=['#f1c9a5','#d9a273','#b57a4d','#8d5a36','#6b4226'],HR=['#161616','#2b1d12','#4a3322','#1a1a1a'],JC={ZIM:'#b8262e',IND:'#1e6fe0',ENG:'#9db8ff',AUS:'#e0b400',AFG:'#1f8a4c',NZ:'#333',SA:'#2e8b57',WI:'#8b1a3a',SL:'#1b4fa3',BAN:'#0a7a4b'};
+/* illustrated avatar, unique per player (not a photograph) */
+const face=(p,s=96)=>{if(PH[p.n])return `<img src="${PH[p.n]}" width="${s}" height="${s}" alt="${p.n}" style="object-fit:cover;display:block">`;const h=hs(p.n),sk=SK[h%5],hr=HR[(h>>3)%4],j=JC[p.c]||'#444',beard=(h>>7)%3===0,cap=(h>>9)%2===0;
+return `<svg width="${s}" height="${s}" viewBox="0 0 100 100" role="img" aria-label="${p.n}"><rect width="100" height="100" fill="${j}" opacity=".35"/><path d="M8 100Q12 72 50 70Q88 72 92 100Z" fill="${j}"/><path d="M40 70L50 82L60 70Z" fill="#fff" opacity=".85"/><rect x="42" y="58" width="16" height="14" fill="${sk}"/><rect x="42" y="64" width="16" height="6" fill="#0003"/><circle cx="33" cy="47" r="4" fill="${sk}"/><circle cx="67" cy="47" r="4" fill="${sk}"/><ellipse cx="50" cy="44" rx="17" ry="20" fill="${sk}"/>${beard?`<path d="M34 48Q36 67 50 67Q64 67 66 48Q60 59 50 59Q40 59 34 48Z" fill="${hr}"/>`:''}${cap?`<path d="M33 38Q33 17 50 17Q67 17 67 38Z" fill="${j}"/><path d="M30 38H78Q77 43 68 42H33Z" fill="#000" opacity=".45"/>`:`<path d="M33 42Q32 19 50 19Q68 19 67 42Q61 29 50 29Q39 29 33 42Z" fill="${hr}"/>`}<circle cx="43" cy="47" r="1.9" fill="#222"/><circle cx="57" cy="47" r="1.9" fill="#222"/><path d="M44 54Q50 58 56 54" stroke="#6a2f25" stroke-width="1.6" fill="none"/><text x="50" y="95" text-anchor="middle" font-family="Arial,sans-serif" font-weight="800" font-size="10" fill="#fff">${p.c}</text></svg>`};
+const cr=n=>'₹'+Number(n.toFixed(2))+' Cr';
+const inits=n=>n.split(' ').map(w=>w[0]).slice(0,2).join('');
+const crest=(t,s=40)=>`<svg width="${s}" height="${s}" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="g${t.id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${t.c1}"/><stop offset="1" stop-color="${t.c1}" stop-opacity=".65"/></linearGradient></defs><path d="M50 4 92 18v32c0 24-18 40-42 48C26 90 8 74 8 50V18z" fill="url(#g${t.id})" stroke="${t.c2}" stroke-width="5"/><path d="M20 70Q50 50 80 70" stroke="${t.c2}" stroke-width="3" fill="none" opacity=".5"/><text x="50" y="58" text-anchor="middle" font-family="Georgia,serif" font-weight="900" font-size="${t.s.length>2?26:34}" fill="${t.c2}">${t.s}</text></svg>`;
+
+function cardHTML(p){const h=hs(p.n),cl=v=>Math.max(1,Math.min(99,v)),r=p.r,q=p.q,
+bat=cl(r==='BAT'?q:r==='WK'?q-2:r==='AR'?q-6:30+h%20),bowl=cl(r==='BOWL'?q:r==='AR'?q-7:r==='BAT'?25+h%15:15),fld=cl(60+(h>>4)%36),imp=cl(q-3+(h>>6)%7),
+tier=q>=90?['leg','LEGEND']:q>=85?['eli','ELITE']:q>=80?['pro','PRO']:['rise','RISING'];
+return `<div class="face tr-${tier[0]}"><div class="shine"></div><div class="tb">${tier[1]}</div><div class="rt">${q}<small>${r}</small></div><div class="av">${face(p,100)}</div><div class="nm">${p.n}</div><div class="meta">${p.c}${p.bt?' • '+BTN[p.bt]:''} • ${p.m!=null?'IPL 2026: '+p.m+' M':'T20 ratings'}</div>${LB[p.n]?`<div class="meta lbm">${LB[p.n][0]} runs • avg ${LB[p.n][1]} • SR ${LB[p.n][2]}</div>`:''}<div class="sts">${[['BAT',bat],['BOWL',bowl],['FIELD',fld],['IMPACT',imp]].map(a=>`<div class="st"><span>${a[0]}</span><b>${a[1]}</b><i style="--w:${a[1]}%"></i></div>`).join('')}</div><div class="base">${p.acc?'Accelerated • ':''}Base ${cr(p.b)}</div></div>`}
+
+function pickXI(q){const s=[...q].sort((a,b)=>b.q-a.q),x=[];let os=0;const add=p=>{if(!p||x.includes(p)||x.length>=11||(p.c!=='IND'&&os>=4))return;x.push(p);if(p.c!=='IND')os++};add(s.find(p=>p.r==='WK'));s.filter(p=>p.r==='BOWL').slice(0,3).forEach(add);s.filter(p=>p.r==='AR').slice(0,2).forEach(add);s.filter(p=>p.r==='BAT').slice(0,3).forEach(add);s.forEach(add);return x}
+function perf(t){const q=t.sq,X=pickXI(q),by=r=>X.filter(p=>r.includes(p.r)).map(p=>p.q-(p.r==='AR'?4:0)).sort((a,b)=>b-a),av=(a,n)=>(a.slice(0,n).reduce((x,y)=>x+y,0)+Math.max(0,n-a.length)*60)/n,sc=(v,m)=>Math.max(0,Math.min(m,(v-60)/35*m));
+const bench=q.filter(p=>!X.includes(p)).map(p=>p.q).sort((a,b)=>b-a),bw=by(['BOWL','AR']),bt=by(['BAT','WK','AR']);
+const xi=sc(av(X.map(p=>p.q),11),40),bat=sc(av(bt,6),15),bowl=sc(av(bw,5),15),bal=(X.some(p=>p.r==='WK')?2:0)+(bw.length>=5?2:0)+(bt.length>=6?2:0)+(X.some(p=>p.r==='AR')?1:0)+(X.some(p=>p.bt==='S')?1:0)+(X.some(p=>p.bt==='M')?1:0)+(X.some(p=>p.bt==='F')?1:0),dep=sc(av(bench,4),10),star=Math.min(10,q.filter(p=>p.q>=90).length*3+q.filter(p=>p.q>=85&&p.q<90).length);
+return{xi,bat,bowl,bal,dep,star,X,val:X.reduce((a,p)=>a+p.q,0)/Math.max(1,100-t.purse),total:Math.round(xi+bat+bowl+bal+dep+star)}}
+
+const $=id=>document.getElementById(id),TM=Object.fromEntries(T.map(t=>[t.id,t]));
+const cv=$('cf'),cx=cv.getContext('2d');let ps=[],raf;
+function confetti(cols){cv.width=innerWidth;cv.height=innerHeight;
+ for(let i=0;i<140;i++)ps.push({x:innerWidth/2,y:innerHeight/2,vx:(Math.random()-.5)*16,vy:-Math.random()*14-3,s:5+Math.random()*7,c:cols[i%cols.length],r:Math.random()*6,l:100});
+ cancelAnimationFrame(raf);(function f(){cx.clearRect(0,0,cv.width,cv.height);ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.35;p.r+=.2;p.l--;cx.save();cx.translate(p.x,p.y);cx.rotate(p.r);cx.fillStyle=p.c;cx.fillRect(-p.s/2,-p.s/2,p.s,p.s*.6);cx.restore()});ps=ps.filter(p=>p.l>0);if(ps.length)raf=requestAnimationFrame(f);else cx.clearRect(0,0,cv.width,cv.height)})()}
+
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+let AC,MUTE=false;const beep=(f,d=.1,v=.05)=>{if(MUTE)return;try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume();const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f;o.type='triangle';g.gain.value=v;o.connect(g);g.connect(AC.destination);o.start();g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+d);o.stop(AC.currentTime+d)}catch(e){}};
+const SFX={bid(){beep(660,.08);setTimeout(()=>beep(880,.1),70)},lot(){beep(392,.12);setTimeout(()=>beep(523,.18),120)},sold(){[523,659,784,1047].forEach((f,k)=>setTimeout(()=>beep(f,.2,.07),k*110))},unsold(){beep(220,.25);setTimeout(()=>beep(165,.4),200)}};
+
+/* ---- networking ---- */
+let P=[],V=null,ME={code:'',pid:'',name:''},off=0,askedFor=-1,inflight=0;
+const call=async req=>{let r;try{r=await(req.a==='meta'?fetch('/meta'):fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)}))}catch(e){throw new Error('No connection to the server.')}
+  const o=await r.json();if(o.err)throw new Error(o.err);return o};
+function toast(m,ok){const t=$('toast');t.className=ok?'ok':'';t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',2800)}
+function apply(o){off=o.now-Date.now();if(o.same)return;if(V&&o.seq<V.seq)return;const prev=V;V=o;if(o.you){ME.pid=o.you.pid;ME.code=o.code;try{localStorage.setItem('iplmp',JSON.stringify(ME))}catch(e){}}if(o.you&&!es)connect();render(prev)}
+async function act(a,x){inflight++;try{apply(await call({a,code:ME.code,pid:ME.pid,...x}));return true}catch(e){toast(e.message);return false}finally{inflight--}}
+/* live updates: the server pushes every change, so bids appear on all phones at once */
+let es=null;
+function connect(){if(es)es.close();es=new EventSource('/events?code='+encodeURIComponent(ME.code)+'&pid='+encodeURIComponent(ME.pid));
+  es.onmessage=m=>{const o=JSON.parse(m.data);if(o.err){es.close();es=null;try{localStorage.removeItem('iplmp')}catch(x){}location.reload();return}apply(o)}}
+const pollNow=()=>{};
+
+async function enter(a){const name=$('nm').value.trim(),code=$('cd').value.trim().toUpperCase();$('herr').textContent='';
+  try{if(!P.length)P=(await call({a:'meta'})).P;ME.name=name;apply(await call({a,name,code,pid:ME.code===code?ME.pid:''}))}catch(e){$('herr').textContent=e.message}}
+$('mk').onclick=()=>enter('create');$('jn').onclick=()=>enter('join');
+$('leave').onclick=()=>{try{localStorage.removeItem('iplmp')}catch(e){}location.reload()};
+(async()=>{try{const s=JSON.parse(localStorage.getItem('iplmp')||'null');if(s&&s.code){P=(await call({a:'meta'})).P;ME=s;apply(await call({a:'join',name:s.name||'Player',code:s.code,pid:s.pid}))}}catch(e){try{localStorage.removeItem('iplmp')}catch(x){}}})();
+
+/* ---- helpers ---- */
+const inc=b=>b<2?.25:b<5?.5:1,nextBid=()=>V.lead?Math.round((V.bid+inc(V.bid))*100)/100:P[V.cur].b;
+const myT=()=>V.you.team?V.teams.find(t=>t.id===V.you.team):null;
+const whyC=(t,amt)=>{const p=P[V.cur];return V.passed.includes(t.id)?'Passed':t.sq.length>=V.maxsq?'Squad full':(p.c!=='IND'&&t.os>=5)?'Overseas full':t.purse-amt<Math.max(0,14-t.sq.length)*.5?'Purse low':''};
+const tObj=t=>({...TM[t.id],purse:t.purse,sq:t.sq.map(([i,paid])=>({...P[i],paid}))});
+function modal(h){TOPEN=false;$('mdb').innerHTML=h+'<p><button class="btn g" onclick="$(\'md\').style.display=\'none\'">Close</button></p>';$('md').style.display='flex'}
+const closeMd=()=>{$('md').style.display='none';TOPEN=false};let TOPEN=false;
+$('md').onclick=e=>{if(e.target.id==='md')closeMd()};
+function squad(id){const t=V.teams.find(x=>x.id===id),m=TM[id];modal(`<div style="display:flex;gap:10px;align-items:center">${crest(m,48)}<div><b>${m.n}</b><br><small style="color:var(--mute)">${esc(t.owner)} • Purse ${cr(t.purse)} • Overseas ${t.os}/5</small></div></div>`+(t.sq.length?t.sq.map(([i,paid])=>`<div class="pr"><span class="av2">${face(P[i],36)}</span><b>${esc(P[i].n)} <small>${P[i].r}</small></b><b style="flex:none">${cr(paid)}</b></div>`).join(''):'<p class="s">No players yet.</p>'))}
+$('strip').onclick=e=>{const b=e.target.closest('.chip');if(b)squad(b.dataset.id)};
+
+/* ---- screens ---- */
+const show=id=>['home','lobby','game','end'].forEach(k=>$(k).hidden=k!==id);
+let cardKey=null,ovKey=null,lastBid=null;
+function render(prev){$('leave').hidden=false;
+  if(V.phase==='lobby'){show('lobby');lobby()}else if(V.phase==='auction'){show('game');game(prev)}else{show('end');ending()}}
+function lobby(){$('rc').textContent=V.code;
+  $('pl').innerHTML=V.players.map(p=>`<span class="chip">${esc(p.name)}${p.host?' 👑':''}${p.team?' • '+TM[p.team].s:''}</span>`).join('');
+  $('tg').innerHTML=T.map(t=>{const o=V.players.find(p=>p.team===t.id),mine=V.you.team===t.id;return `<button class="tc ${o?'h':''}" data-id="${t.id}" style="--c:${t.c1}">${crest(t,64)}<small>${t.n}</small><em>${o?(mine?'You':esc(o.name)):'Free, tap to pick'}</em></button>`}).join('');
+  $('hostbox').hidden=!V.you.isHost;$('wait').hidden=V.you.isHost;if(document.activeElement!==$('oP'))$('oP').value=V.pool;if(document.activeElement!==$('oS'))$('oS').value=V.maxsq;
+  $('sqn').textContent=V.maxsq}
+$('tg').onclick=e=>{const b=e.target.closest('.tc');if(!b)return;act(V.you.team===b.dataset.id?'unclaim':'claim',{team:b.dataset.id})};
+$('oP').onchange=e=>act('opt',{pool:e.target.value});$('oS').onchange=e=>act('opt',{sq:+e.target.value});
+$('go').onclick=()=>act('start');
+
+function game(prev){const p=P[V.cur],t=myT();
+  $('lot').textContent=`Lot ${V.i+1}/${V.total} • ${V.setLabel}`;
+  if(cardKey!==V.cur){cardKey=V.cur;const c=$('card');c.classList.remove('in');void c.offsetWidth;c.classList.add('in');c.innerHTML=cardHTML(p);SFX.lot()}
+  const nb=nextBid(),a=$('amt');a.textContent=cr(V.lead?V.bid:p.b);
+  if(lastBid!==V.bid&&V.bid){a.classList.add('pop');setTimeout(()=>a.classList.remove('pop'),160);SFX.bid()}lastBid=V.bid;
+  $('ldr').innerHTML=!V.lead?'<small style="color:var(--mute)">No bids yet</small>':`<div class="coin">${crest(TM[V.lead],44)}</div><div style="padding-right:56px"><b>${TM[V.lead].s}</b><small>${esc(V.teams.find(x=>x.id===V.lead).owner)}</small></div>`;
+  $('cm').textContent=V.log[V.log.length-1]||'';
+  if(V.paused){const pe=V.pend;$('cm').textContent='⏸ Auction paused: '+(pe?TM[pe[0]].s+' and '+TM[pe[1]].s:'two teams')+' have a trade offer open. Bidding resumes when it is answered.'}
+  const live=V.stage==='bid'&&!V.paused;
+  if(t){const w=whyC(t,nb),can=live&&V.lead!==t.id&&!w;
+    $('ctl').innerHTML=`<div class="tp"><button class="bb" style="--c:${TM[t.id].c1}" data-amt="${nb}" ${can?'':'disabled'}>${crest(TM[t.id],28)}<span>${TM[t.id].s}<br><small>${V.lead===t.id?'You lead':w||'Bid '+cr(nb)}</small></span></button><button class="btn g pass" ${live&&V.lead!==t.id&&!V.passed.includes(t.id)?'':'disabled'}>Pass</button></div>`}
+  else $('ctl').innerHTML='<p class="s">You are watching. Join a room before it starts to bid.</p>';
+  $('host').hidden=!V.you.isHost;$('sell').textContent=V.lead?'🔨 Sell now':'⏭ Pass player';$('sell').disabled=!live;$('skset').disabled=!live;
+  $('strip').innerHTML=V.teams.map(x=>`<button class="chip ${V.lead===x.id?'l':''}" data-id="${x.id}">${crest(TM[x.id],30)}<span><b>${TM[x.id].s}${x.id===V.you.team?' ★':''}</b>${cr(x.purse)} • ${x.sq.length}/${V.maxsq}</span></button>`).join('');
+  if(V.stage==='res'&&V.res&&ovKey!==V.i){ovKey=V.i;stamp(V.res)}
+  tradeHook()}
+$('ctl').onclick=e=>{const b=e.target.closest('.bb'),q=e.target.closest('.pass');if(b&&!b.disabled){b.disabled=true;act('bid',{amt:+b.dataset.amt})}
+    else if(q){q.disabled=true;act('pass')}};
+$('sell').onclick=()=>act('sell');$('skset').onclick=()=>confirm('Skip the rest of this set?')&&act('skipset');$('endA').onclick=()=>confirm('End the auction for everyone?')&&act('end');
+function stamp(r){const p=P[r.i],ov=$('ov');
+  if(r.k==='sold'){const t=TM[r.t];ov.innerHTML=`<div class="stamp" style="color:${t.c2==='#FFFFFF'?'#fff':t.c1==='#1B2133'?t.c2:t.c1};border-color:currentColor">SOLD!<small>${esc(p.n)} → ${t.n}<br>${cr(r.a)}</small></div>`;confetti([t.c1,t.c2,'#f2b632']);SFX.sold()}
+  else{ov.innerHTML=`<div class="stamp" style="color:var(--bad);border-color:var(--bad)">UNSOLD<small>${esc(p.n)}</small></div>`;SFX.unsold()}
+  ov.style.display='grid';setTimeout(()=>ov.style.display='none',2300)}
+
+/* local countdown between polls */
+setInterval(()=>{if(!V||V.phase!=='auction')return;const left=Math.max(0,(V.endsAt-(V.paused?V.pausedAt:Date.now()+off))/1000);
+  if(V.stage==='bid'){$('bar').style.width=Math.min(100,left/((V.bidMs||10000)/1000)*100)+'%';$('tl').textContent=(V.paused?'⏸ ':'')+left.toFixed(1)+'s';
+    if(V.paused)return;
+    if(V.lead&&left<=3.5&&left>0)$('cm').textContent=left<=1?'Last call, sold unless someone bids!':left<=2?'Going twice…':'Going once…';
+    if(left<=0&&askedFor!==V.seq){askedFor=V.seq;setTimeout(pollNow,250)}}
+  else{if(V.paused)return;$('bar').style.width='0';$('tl').textContent='';const r=(V.resUntil||0);if(askedFor!==V.seq+'r'){askedFor=V.seq+'r';setTimeout(pollNow,3200)}}},100);
+
+/* ---- trades ---- */
+let TS={to:'',gp:[],rp:[],dir:'pay',cash:'',sig:''},seenIn=new Set();
+const liveTr=()=>(V.trades||[]).filter(t=>Date.now()+off<t.exp);
+const pn=i=>esc(P[i].n);
+const side=(l,c)=>{const a=l.map(i=>pn(i)+' <small>('+P[i].r+')</small>');if(c>0)a.push('<b>'+cr(c)+' purse</b>');return a.length?a.join(' + '):'nothing'};
+function tradeHook(){const t=myT();$('trrow').hidden=!t||V.phase!=='auction';if(!t)return;
+  const inc=liveTr().filter(x=>x.to===t.id);
+  $('trbtn').innerHTML='🔄 Trade'+(inc.length?'<span class="badge">'+inc.length+'</span>':'');
+  inc.forEach(x=>{if(!seenIn.has(x.id)){seenIn.add(x.id);toast(TM[x.from].s+' sent you a trade offer',true);SFX.lot()}});
+  if(TOPEN&&$('md').style.display!=='none'){trList();const sg=trSig();if(sg!==TS.sig)trBuild()}}
+const trSig=()=>{const m=myT(),o=V.teams.find(x=>x.id===TS.to);return JSON.stringify([m&&m.sq.map(x=>x[0]),o&&o.sq.map(x=>x[0])])};
+function openTrade(){TS={to:'',gp:[],rp:[],dir:'pay',cash:'',sig:''};TOPEN=true;
+  $('mdb').innerHTML='<h2>Trades</h2><p class="s">Offer 1 or 2 players, with or without purse, to another team. The auction is paused for everyone while an offer is open, and resumes when it is accepted, declined, cancelled or expires (90 seconds).</p><div id="trl"></div><div class="sh">New offer</div><div id="trb"></div><p><button class="btn g" onclick="closeMd()">Close</button></p>';
+  $('md').style.display='flex';trList();trBuild()}
+function trList(){const t=myT(),el=$('trl');if(!el||!t)return;const L=liveTr();
+  const inc=L.filter(x=>x.to===t.id),out=L.filter(x=>x.from===t.id);
+  el.innerHTML=(inc.length?'<div class="sh">Offers to you</div>'+inc.map(x=>`<div class="to"><b>${TM[x.from].n}</b> offers<br>You receive: ${side(x.gp,x.gc)}<br>You give: ${side(x.rp,x.rc)}<div class="row2"><button class="btn" data-k="taccept" data-id="${x.id}">Accept</button><button class="btn g" data-k="tdecline" data-id="${x.id}">Decline</button></div></div>`).join(''):'')+
+  (out.length?'<div class="sh">Your offers</div>'+out.map(x=>`<div class="to">To <b>${TM[x.to].n}</b><br>You give: ${side(x.gp,x.gc)}<br>You get: ${side(x.rp,x.rc)}<div class="row2"><button class="btn g" data-k="tcancel" data-id="${x.id}">Cancel offer</button></div></div>`).join(''):'')||'<p class="s">No open offers.</p>'}
+function trBuild(){const m=myT(),el=$('trb');if(!el||!m)return;
+  const o=V.teams.find(x=>x.id===TS.to);
+  TS.gp=TS.gp.filter(i=>m.sq.some(x=>x[0]===i));TS.rp=TS.rp.filter(i=>o&&o.sq.some(x=>x[0]===i));
+  const lst=(t,k,sel)=>t&&t.sq.length?t.sq.map(([i,paid])=>`<label class="tk"><input type="checkbox" data-s="${k}" value="${i}" ${sel.includes(i)?'checked':''}><b>${pn(i)} <small>${P[i].r} • ${P[i].c}</small></b><small>${cr(paid)}</small></label>`).join(''):'<p class="s">No players.</p>';
+  el.innerHTML=`<label class="s">Trade with <select id="trTo"><option value="">Choose a team</option>${V.teams.filter(x=>x.id!==m.id).map(x=>`<option value="${x.id}" ${x.id===TS.to?'selected':''}>${TM[x.id].n} (${cr(x.purse)})</option>`).join('')}</select></label>
+  <p class="s" style="margin:10px 0 2px"><b>You give</b> (up to 2 players)</p>${lst(m,'g',TS.gp)}
+  ${o?`<p class="s" style="margin:10px 0 2px"><b>You ask for</b> (up to 2 players, optional)</p>${lst(o,'r',TS.rp)}`:''}
+  <p class="s" style="margin:10px 0 2px"><b>Purse</b> (optional). You have ${cr(m.purse)}${o?', they have '+cr(o.purse):''}</p>
+  <div class="row2"><select id="trDir"><option value="pay" ${TS.dir==='pay'?'selected':''}>I add purse</option><option value="get" ${TS.dir==='get'?'selected':''}>I ask for purse</option></select><input class="tx" id="trCash" type="number" inputmode="decimal" min="0" step="0.25" placeholder="₹ Cr" value="${TS.cash}" style="margin:0"></div>
+  <button class="btn" id="trSend" style="width:100%;margin-top:8px">Send offer</button>`;
+  TS.sig=trSig()}
+$('mdb').addEventListener('click',async e=>{const b=e.target.closest('[data-k]');if(b){b.disabled=true;await act(b.dataset.k,{id:+b.dataset.id});return}
+  if(e.target.id==='trSend'){const c=Math.max(0,+TS.cash||0);if(!TS.to)return toast('Choose a team first');
+    const ok=await act('tpropose',{to:TS.to,gp:TS.gp,rp:TS.rp,gc:TS.dir==='pay'?c:0,rc:TS.dir==='get'?c:0});
+    if(ok){toast('Offer sent',true);TS.gp=[];TS.rp=[];TS.cash='';if(TOPEN)trBuild()}}});
+$('mdb').addEventListener('change',e=>{const t=e.target;
+  if(t.id==='trTo'){TS.to=t.value;TS.rp=[];trBuild()}
+  else if(t.id==='trDir')TS.dir=t.value;
+  else if(t.dataset&&t.dataset.s){const a=t.dataset.s==='g'?TS.gp:TS.rp,v=+t.value;
+    if(t.checked){if(a.length>=2){t.checked=false;return toast('Max 2 players per side')}a.push(v)}else a.splice(a.indexOf(v),1)}});
+$('mdb').addEventListener('input',e=>{if(e.target.id==='trCash')TS.cash=e.target.value});
+$('trbtn').onclick=openTrade;
+
+function ending(){const r=V.teams.map(t=>{const o=tObj(t);return{t,o,s:perf(o).total}}).sort((a,b)=>b.s-a.s);$('lot').textContent='';
+  $('end').innerHTML=`<h2>Auction complete</h2><p class="s">Ranked out of 100 on best XI, batting, bowling, balance, bench and star power. Tap a team for its squad.</p>`+
+  r.map((x,k)=>`<button class="lb" data-id="${x.t.id}"><span style="font:900 20px Georgia">${k+1}</span>${crest(TM[x.t.id],44)}<b>${TM[x.t.id].n}${x.t.id===V.you.team?' ★':''}<br><small style="color:var(--mute)">${esc(x.t.owner)} • ${x.t.sq.length} players • ${cr(x.t.purse)} left</small></b><span style="font:900 22px Georgia;color:var(--gold)">${x.s}</span></button>`).join('')+
+  `<p class="s">${V.un.length} players went unsold.</p><p><button class="btn g" onclick="$('leave').click()">New game</button></p>`;
+  if(ovKey!=='end'){ovKey='end';confetti([TM[r[0].t.id].c1,TM[r[0].t.id].c2,'#f2b632'])}}
+$('end').onclick=e=>{const b=e.target.closest('.lb');if(b)squad(b.dataset.id)};
+</script>
+</body>
+</html>
