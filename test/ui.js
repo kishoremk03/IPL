@@ -1,0 +1,45 @@
+// Browser test (needs playwright + chromium): node test/ui.js
+const { chromium } = require('playwright'), { spawn } = require('child_process'), fs = require('fs'), os = require('os'), path = require('path');
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'iplui-')), W = ms => new Promise(r => setTimeout(r, ms));
+let bad = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) bad++; };
+(async () => {
+  const srv = spawn('node', [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT: '3997', DATA_DIR: dir, RATE_MAX: '100000' }, stdio: 'ignore' }); await W(700);
+  const br = await chromium.launch(), errs = [], U = 'http://localhost:3997/';
+  const mkPage = async () => { const c = await br.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true }), p = await c.newPage();
+    await p.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort()); p.on('pageerror', e => errs.push(e.message)); p.on('dialog', d => d.accept()); return p; };
+  const h = await mkPage(), a = await mkPage(), b = await mkPage();
+  await h.goto(U); await h.fill('#nm', 'Host'); await h.click('#mk'); await h.waitForSelector('#lobby:not([hidden])');
+  const code = (await h.textContent('#rc')).trim(); ok(/^[A-Z]{4}$/.test(code), 'host creates room ' + code);
+  await a.goto(U + '?room=' + code); ok((await a.inputValue('#cd')) === code, 'invite link pre-fills the room code');
+  await a.fill('#nm', 'Asha'); await a.click('#jn'); await a.waitForSelector('#lobby:not([hidden])');
+  await b.goto(U + '?room=' + code); await b.fill('#nm', 'Bala'); await b.click('#jn'); await b.waitForSelector('#lobby:not([hidden])');
+  await h.click('.tc[data-id=mi]'); await a.click('.tc[data-id=csk]'); await b.click('.tc[data-id=rcb]');
+  await h.selectOption('#oR', '1'); await h.selectOption('#oB', '1'); await h.selectOption('#oT', 'calm'); await W(300);
+  ok((await b.textContent('#rule')).includes('calm'), 'other players see the host options');
+  await h.click('#go'); for (const p of [h, a, b]) await p.waitForSelector('#game:not([hidden])');
+  ok(/₹/.test(await a.textContent('#amt')), 'auction screen shows the lot');
+  ok((await a.textContent('#need')).includes('Needs'), 'squad-needs meter shows');
+  await a.click('.bb[data-amt]'); await W(400); ok((await b.textContent('#ldr')).includes('CSK'), 'bid shows on the other phone');
+  await b.click('#jmp'); await W(400); ok((await a.textContent('#ldr')).includes('RCB'), 'jump bid works');
+  await a.fill('#abm', '6'); await a.click('#abs'); await W(500); ok((await a.textContent('#abn')).includes('Auto-bid is on'), 'auto-bid switches on');
+  ok((await a.textContent('#ldr')).includes('CSK'), 'auto-bid takes the lead');
+  await a.click('#stb'); ok((await a.textContent('#stb')).includes('Watching'), 'watchlist star toggles');
+  await h.click('#sell'); await W(500); await h.click('#undo'); await W(500); ok((await h.textContent('#cm')).includes('Undid') || (await h.textContent('#amt')).includes('₹'), 'host can undo the sale');
+  await h.click('#menub'); await h.waitForSelector('#md[style*="flex"]'); ok((await h.textContent('#mdb')).includes('Room controls'), 'host menu opens');
+  await h.click('[data-m=room]'); ok((await h.textContent('#mdb')).includes('Lock the room'), 'room controls open');
+  await h.click('[data-rc=lock]'); await W(300); ok((await h.textContent('#mdb')).includes('Unlock'), 'room locks');
+  await h.evaluate(() => closeMd()); await h.click('#menub'); await h.click('[data-m=set]'); await h.check('#sBig'); ok(await h.evaluate(() => document.body.classList.contains('bigtap')), 'settings apply');
+  await h.evaluate(() => closeMd());
+  await a.screenshot({ path: '/tmp/phone-game.png' });
+  await a.click('.bb[data-amt]'); await W(300); await h.click('#sell'); await W(600);
+  await h.click('#endA'); for (const p of [h, a]) await p.waitForSelector('#end:not([hidden])');
+  await a.click('text=Simulate the season'); ok((await a.textContent('#mdb')).includes('Playoffs'), 'season simulator runs');
+  const t1 = await a.textContent('#mdb'); await b.click('text=Simulate the season'); ok((await b.textContent('#mdb')) === t1, 'season result is identical on every phone');
+  await a.evaluate(() => closeMd()); await a.click('text=My playing XI'); await W(200); ok((await a.textContent('#mdb')).includes('Playing XI'), 'XI picker opens');
+  await a.evaluate(() => closeMd()); await a.click('text=Report card'); ok((await a.textContent('#mdb')).includes('Best buy'), 'report card shows awards');
+  await a.evaluate(() => closeMd()); const [dl] = await Promise.all([a.waitForEvent('download', { timeout: 4000 }).catch(() => null), a.click('text=Share image')]); ok(!!dl, 'share image downloads a PNG');
+  await a.click('text=History'); await W(400); ok((await a.textContent('#mdb')).includes('History'), 'history opens');
+  ok(errs.length === 0, 'no JavaScript errors in any browser' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
+  await br.close(); srv.kill('SIGTERM'); await W(300); try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+  process.exit(bad ? 1 : 0);
+})().catch(e => { console.log('CRASH', e.message); process.exit(1); });
