@@ -2,7 +2,8 @@
  * IPL Auction 3D - Multiplayer server (plain Node.js, no packages to install).
  * The server owns purses, squads, bids and the lot clock. Phones get every change pushed
  * instantly over Server-Sent Events; actions come in as POST /api.
- * Rooms live in memory: if the host restarts, rooms are gone (free hosts also sleep when idle).
+ * Rooms live in memory and are saved to rooms.json (set DATA_DIR to a persistent disk on your host).
+ * The host can also download a backup of the room and restore it later, on any server.
  */
 const http = require('http');
 const fs = require('fs');
@@ -14,11 +15,15 @@ const DEFSQ = 25, SQ_OPTS = [15, 18, 21, 25], PURSE = 100;
 const msq = s => s.maxsq || DEFSQ;
 const osl = s => Math.floor(msq(s) / 3);      // overseas cap: 15 -> 5 (10 Indian), 18 -> 6 (12), 21 -> 7 (14), 25 -> 8 (17)
 const BID_MS = 10000, BUMP_MS = 10000, RES_MS = 3000, TRADE_TTL = 90000;
+const HOST_AWAY_MS = 45000;                            // host with no open connection for this long can be replaced by a team owner
 const MAX_PICK = 10;                                   // each team can shortlist up to this many unsold players for the accelerated round
 const ACC_BID_MS = 7000, ACC_BUMP_MS = 5000;          // the accelerated round for unsold players is quicker
 const accB = b => Math.max(.25, Math.round(b / 2 / .25) * .25);   // unsold players come back at half base price
 const baseOf = (s, i) => s.acc ? accB(P[i].b) : P[i].b;
-const bidMs = s => s.acc ? ACC_BID_MS : BID_MS, bumpMs = s => s.acc ? ACC_BUMP_MS : BUMP_MS;
+const TIMERS = { classic: [10000, 10000], blitz: [5000, 5000], calm: [20000, 15000] };   // [first bid window, extension after each bid]
+const RTM_MS = 10000;
+const bidMs = s => s.acc ? ACC_BID_MS : (TIMERS[s.timer] || TIMERS.classic)[0];
+const bumpMs = s => { const b = s.acc ? ACC_BUMP_MS : (TIMERS[s.timer] || TIMERS.classic)[1]; return (s.nb || 0) >= 6 ? Math.max(4000, Math.round(b / 2)) : b; };   // bid war: after 6 bids the extension halves, so wars finish
 
 const DATA=`Tim David|BAT|AUS|1.0|82||rcb|16|1|1
 Venkatesh Iyer|AR|IND|1.0|79|M|rcb|16|1|1
@@ -334,6 +339,24 @@ const P = DATA.split('\n').map(l => { const a = l.split('|');
 
 /* ---------- state (in memory) ---------- */
 const rooms = new Map();
+const HIST_FILE = path.join(process.env.DATA_DIR || __dirname, 'history.json');
+let HIST = []; try { HIST = JSON.parse(fs.readFileSync(HIST_FILE, 'utf8')); } catch (e) { /* first run */ }
+function recordHistory(s) {
+  if (s.histDone) return; s.histDone = 1;
+  HIST.push({ code: s.code, at: Date.now(), maxsq: msq(s), teams: Object.entries(s.tm).map(([id, t]) => ({ id, owner: t.owner, purse: t.purse, sq: t.sq })), form: s.form || {} });
+  if (HIST.length > 100) HIST = HIST.slice(-100);
+  try { fs.writeFileSync(HIST_FILE + '.tmp', JSON.stringify(HIST)); fs.renameSync(HIST_FILE + '.tmp', HIST_FILE); } catch (e) { console.error('Could not save history:', e.message); }
+}
+/* simple abuse guard: per IP request rate and room creation rate */
+const rl = new Map(), RATE_MAX = Number(process.env.RATE_MAX) || 240;      // requests per minute per IP
+function limited(ip, a) {
+  const now = Date.now(); let e = rl.get(ip); if (!e) rl.set(ip, e = { w: now, n: 0, c: [] });
+  if (now - e.w > 60000) { e.w = now; e.n = 0; }
+  if (++e.n > RATE_MAX) return true;
+  if (a === 'create' || a === 'import') { e.c = e.c.filter(t => now - t < 600000); if (e.c.length >= 8) return true; e.c.push(now); }
+  return false;
+}
+setInterval(() => { const o = Date.now() - 700000; for (const [k, e] of rl) if (e.w < o) rl.delete(k); }, 300000);
 const r2 = x => Math.round(x * 100) / 100;
 const uid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12);
 
@@ -374,7 +397,7 @@ function broadcast(s) {
 /* ---------- request handling ---------- */
 function handle(r) {
   const a = r.a;
-  if (a === 'create' || a === 'join') return enter(r);
+  if (a === 'create' || a === 'join' || a === 'import') return enter(r);
   const code = String(r.code || '').toUpperCase().trim();
   const s = rooms.get(code);
   if (!s) throw new Error('Room not found or expired.');
@@ -390,10 +413,11 @@ function handle(r) {
 function enter(r) {
   const name = String(r.name || '').trim().slice(0, 20);
   if (!name) throw new Error('Enter your name first.');
+  if (r.a === 'import') return importRoom(r, name);
   if (r.a === 'create') {
     let code; do { code = Array.from({length:4}, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)]).join(''); } while (rooms.has(code));
     const pid = uid();
-    const s = { code, host: pid, phase: 'lobby', pool: 'sq26', maxsq: DEFSQ, players: {}, seq: 1, log: [], clients: new Set(), touched: Date.now() };
+    const s = { code, host: pid, phase: 'lobby', pool: 'sq26', maxsq: DEFSQ, timer: 'classic', rtmN: 0, formOn: true, sponsorOn: false, locked: false, players: {}, seq: 1, log: [], clients: new Set(), touched: Date.now() };
     s.players[pid] = { name, team: null };
     rooms.set(code, s); return view(s, pid);
   }
@@ -402,10 +426,16 @@ function enter(r) {
   if (!s) throw new Error('Room not found or expired.');
   let pid = r.pid;
   if (!(pid && s.players[pid])) {
-    if (Object.keys(s.players).length >= 20) throw new Error('Room is full.');
-    pid = uid();
-    s.players[pid] = { name, team: null };       // joins as spectator after start
-    s.seq++; broadcast(s);
+    const live = new Set([...s.clients].map(c => c.pid)), nm = name.toLowerCase();       // lost your session? the same name gets you back (never the host, never someone who is connected)
+    const old = Object.keys(s.players).find(k => k !== s.host && s.players[k].name.toLowerCase() === nm && !live.has(k));
+    if (old) pid = old;
+    else {
+      if (s.locked) throw new Error('The host has locked this room.');
+      if (Object.keys(s.players).length >= 20) throw new Error('Room is full.');
+      pid = uid();
+      s.players[pid] = { name, team: null };       // joins as spectator after start
+      s.seq++; broadcast(s);
+    }
   }
   return view(s, pid);
 }
@@ -414,18 +444,31 @@ function enter(r) {
 function act(s, r) {
   const pl = s.players[r.pid], isHost = r.pid === s.host, now = Date.now();
   if (s.trades) s.trades = s.trades.filter(t => now < t.at + TRADE_TTL);
-  if (s.pausedAt && ['bid', 'pass', 'sell', 'skipset'].includes(r.a)) throw new Error('The auction is paused.');
+  if (s.pausedAt && ['bid', 'pass', 'sell', 'skipset', 'auto', 'undo'].includes(r.a)) throw new Error('The auction is paused.');
   switch (r.a) {
     case 'claim': {
-      if (s.phase !== 'lobby') throw new Error('Auction already started.');
       if (!TEAM_IDS.includes(r.team)) throw new Error('Unknown team.');
       if (Object.values(s.players).some(p => p.team === r.team && p !== pl)) throw new Error('That team is taken.');
+      if (s.phase !== 'lobby') {     // mid-auction: only a team that is already playing and has no owner connected (lost session, restored room)
+        if (s.phase !== 'auction' || !s.tm[r.team]) throw new Error('That team is not in this auction.');
+        if (pl.team) throw new Error('You already have a team.');
+        s.tm[r.team].owner = pl.name; s.log.push(pl.name + ' took over ' + r.team.toUpperCase());
+      }
       pl.team = r.team; break; }
+    case 'takehost':
+      if (isHost) break;
+      if (!pl.team) throw new Error('Only team owners can take over as host.');
+      if (!s.hostAway || now - s.hostAway < HOST_AWAY_MS) throw new Error('The host is still here.');
+      s.host = r.pid; s.hostAway = 0; s.log.push('👑 ' + pl.name + ' is the new host.'); break;
     case 'unclaim': if (s.phase === 'lobby') pl.team = null; break;
     case 'opt':
       if (!isHost || s.phase !== 'lobby') throw new Error('Only the host can change this.');
       if (['sq26','all','core'].includes(r.pool)) s.pool = r.pool;
       if (SQ_OPTS.includes(Number(r.sq))) s.maxsq = Number(r.sq);
+      if (TIMERS[r.timer]) s.timer = r.timer;
+      if ([0, 1, 2].includes(Number(r.rtm)) && r.rtm !== undefined) s.rtmN = Number(r.rtm);
+      if (r.form !== undefined) s.formOn = !!Number(r.form);
+      if (r.sponsor !== undefined) s.sponsorOn = !!Number(r.sponsor);
       break;
     case 'start': startAuction(s, isHost, now); break;
     case 'bid': placeBid(s, r, now); break;
@@ -433,7 +476,7 @@ function act(s, r) {
       const tid = pl.team;
       if (s.phase !== 'auction' || s.stage !== 'bid' || !s.tm[tid]) throw new Error('You cannot pass now.');
       if (s.lead === tid || s.passed.includes(tid)) break;
-      s.passed.push(tid); s.log.push(s.tm[tid].s + ' pass'); earlyClose(s, now); break; }
+      s.passed.push(tid); if (s.auto) delete s.auto[tid]; s.log.push(s.tm[tid].s + ' pass'); earlyClose(s, now); break; }
     case 'sell':
       if (!isHost || s.stage !== 'bid') throw new Error('Host only.');
       s.endsAt = now; tick(s); break;
@@ -477,6 +520,47 @@ function act(s, r) {
       break; }
     case 'tpropose': proposeTrade(s, pl, r, now); break;
     case 'taccept': case 'tdecline': case 'tcancel': answerTrade(s, pl, r, now); break;
+    case 'auto': {
+      const tid = pl.team;
+      if (s.phase !== 'auction' || s.stage !== 'bid' || !s.tm[tid]) throw new Error('Auto-bid works while a lot is open and you own a team.');
+      const m = r2(Number(r.max));
+      if (!isFinite(m) || m < 0 || m > 100) throw new Error('Enter a valid amount.');
+      s.auto = s.auto || {};
+      if (m === 0) delete s.auto[tid]; else { if (m > s.tm[tid].purse) throw new Error('That is more than your purse.'); s.auto[tid] = m; }
+      runAuto(s, now); earlyClose(s, now); break; }
+    case 'undo': {
+      if (!isHost) throw new Error('Host only.');
+      const L = s.last;
+      const ok = L && s.phase === 'auction' && now - L.at < 20000 && (L.acc || 0) === (s.acc ? 1 : 0) && (s.stage === 'res' || s.stage === 'rtm' || (s.stage === 'bid' && !s.lead && s.i === L.i + 1));
+      if (!ok) throw new Error('Nothing to undo. Only the last result can be undone, within 20 seconds, before the next lot gets a bid.');
+      if (L.sold) {
+        const t = s.tm[L.t], k = t ? t.sq.findIndex(x => x[0] === L.cur) : -1;
+        if (k < 0) throw new Error('That player has moved (trade), so it cannot be undone.');
+        t.sq.splice(k, 1); t.purse = r2(t.purse + L.a); if (P[L.cur].c !== 'IND') t.os--; if (L.rtm) t.rtm++;
+      } else s.un = s.un.filter(x => x !== L.cur);
+      s.last = null; s.rtm = null; s.i = L.i; s.cur = L.cur; s.stage = 'bid'; s.bid = 0; s.lead = null; s.passed = []; s.res = null; s.auto = {}; s.nb = 0; s.endsAt = now + bidMs(s);
+      s.log.push('↩ Host undid the last result. ' + P[L.cur].n + ' is back on the block.'); break; }
+    case 'rtm': case 'rtmpass': {
+      if (s.stage !== 'rtm' || !s.rtm) throw new Error('No Right to Match is open.');
+      if (pl.team !== s.rtm.t && !(isHost && r.a === 'rtmpass')) throw new Error('Only ' + s.rtm.t.toUpperCase() + ' can answer this.');
+      rtmResolve(s, now, r.a === 'rtm'); break; }
+    case 'lock': if (!isHost) throw new Error('Host only.'); s.locked = !s.locked; s.log.push(s.locked ? '🔒 Host locked the room.' : '🔓 Host unlocked the room.'); break;
+    case 'kick': case 'givehost': {
+      if (!isHost) throw new Error('Host only.');
+      const k = Object.keys(s.players)[Number(r.n)];
+      if (!k || k === r.pid) throw new Error('Choose another person.');
+      if (r.a === 'givehost') { s.host = k; s.hostAway = 0; s.log.push('👑 ' + s.players[k].name + ' is the new host.'); break; }
+      s.log.push(s.players[k].name + ' was removed by the host.'); delete s.players[k];
+      for (const c of [...s.clients]) if (c.pid === k) { try { c.res.write('data: ' + JSON.stringify({ err: 'You were removed from the room.' }) + '\n\n'); c.res.end(); } catch (e) { /* gone */ } s.clients.delete(c); }
+      break; }
+    case 'xi': {
+      if (s.phase !== 'done') throw new Error('Playing XI opens when the auction ends.');
+      const tid = pl.team; if (!tid || !s.tm[tid]) throw new Error('Only team owners pick an XI.');
+      const own = s.tm[tid].sq.map(x => x[0]), list = [], seen = new Set();
+      (Array.isArray(r.ids) ? r.ids : []).forEach(x => { const n = Number(x); if (own.includes(n) && !seen.has(n)) { seen.add(n); list.push(n); } });
+      if (list.length && list.length !== 11) throw new Error('Pick exactly 11 players, or clear to let the coach pick.');
+      if (osOf(list) > 4) throw new Error('At most 4 overseas players in the XI.');
+      s.xi = s.xi || {}; if (list.length) s.xi[tid] = list; else delete s.xi[tid]; break; }
     case 'end':
       if (!isHost || s.phase !== 'auction') throw new Error('Host only.');
       finish(s); break;
@@ -586,7 +670,9 @@ function startAuction(s, isHost, now) {
   const bs = buildSets(pool); s.setOf = bs.setOf; s.setn = bs.names;
   for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
   s.order = pool.sort((x, y) => s.setOf[x] - s.setOf[y]);
-  s.tm = {}; claimed.forEach(([k, p]) => s.tm[p.team] = { s: p.team.toUpperCase(), owner: p.name, purse: PURSE, os: 0, sq: [] });
+  s.tm = {}; claimed.forEach(([k, p]) => s.tm[p.team] = { s: p.team.toUpperCase(), owner: p.name, purse: PURSE, os: 0, sq: [], rtm: s.rtmN || 0 });
+  s.form = {}; if (s.formOn) pool.forEach(i => { const d = Math.round((Math.random() * 2 - 1) * 3); if (d) s.form[i] = d; });
+  s.nb = 0; s.auto = {}; s.sponsored = 0; s.last = null; s.xi = {};
   s.i = -1; s.un = []; s.passed = []; s.phase = 'auction';
   s.log = ['Auction started!'];
   nextLot(s, now);
@@ -611,14 +697,30 @@ function placeBid(s, r, now) {
   if (s.phase !== 'auction' || !s.tm[tid]) throw new Error('Pick a team in the lobby to bid.');
   if (s.stage !== 'bid' || now >= s.endsAt) throw new Error('Bidding is closed for this lot.');
   if (s.lead === tid) throw new Error('You already lead.');
-  const need = nextBid(s);
-  if (Math.abs(need - r.amt) > 1e-9) throw new Error('Price moved to ' + need + ' Cr.');
-  const w = why(s, tid, need); if (w) throw new Error(w);
-  s.bid = need; s.lead = tid;
+  const need = nextBid(s); let amt = need;
+  if (r.jump) {                                          // jump bid: up to 10 Cr above the next price, in 0.25 steps
+    amt = r2(Number(r.amt));
+    if (!isFinite(amt) || amt < need - 1e-9 || amt > need + 10 || Math.abs(Math.round(amt / .25) * .25 - amt) > 1e-9) throw new Error('Price moved to ' + need + ' Cr.');
+  } else if (Math.abs(need - r.amt) > 1e-9) throw new Error('Price moved to ' + need + ' Cr.');
+  const w = why(s, tid, amt); if (w) throw new Error(w);
+  s.bid = amt; s.lead = tid; s.nb = (s.nb || 0) + 1;
   s.endsAt = Math.max(s.endsAt, now + bumpMs(s));
-  s.log.push(tid.toUpperCase() + ' bids ' + need + ' Cr');
+  s.log.push(tid.toUpperCase() + ' bids ' + amt + ' Cr' + (r.jump && amt > need ? ' (jump)' : ''));
+  runAuto(s, now);
   if (s.log.length > 40) s.log = s.log.slice(-30);
   earlyClose(s, now);
+}
+
+/* proxy bidding: a team can set a maximum; the server keeps bidding for it, one step at a time, until it is the leader or the maximum is reached */
+function runAuto(s, now) {
+  if (!s.auto) return;
+  for (let g = 0; g < 80; g++) {
+    const need = nextBid(s);
+    const c = Object.keys(s.auto).filter(t => t !== s.lead && s.tm[t] && s.auto[t] >= need - 1e-9 && !why(s, t, need)).sort((a, b) => s.auto[b] - s.auto[a])[0];
+    if (!c) break;
+    s.bid = need; s.lead = c; s.nb = (s.nb || 0) + 1; s.endsAt = Math.max(s.endsAt, now + bumpMs(s));
+    s.log.push(c.toUpperCase() + ' bids ' + need + ' Cr (auto)');
+  }
 }
 
 function earlyClose(s, now) {
@@ -636,6 +738,7 @@ function syncPause(s, now) {
     const d = now - s.pausedAt;
     if (s.endsAt) s.endsAt += d;
     if (s.resUntil) s.resUntil += d;
+    if (s.rtmUntil) s.rtmUntil += d;
     s.pausedAt = 0; return true;
   }
   return ch;
@@ -645,7 +748,7 @@ const due = s => {
   const n = Date.now();
   if (s.phase !== 'auction') return false;
   if (s.pausedAt) return !(s.trades || []).some(t => n < t.at + TRADE_TTL) && !s.hold;   // nothing left holding the clock: resume
-  return (s.stage === 'bid' && n >= s.endsAt) || (s.stage === 'res' && n >= s.resUntil);
+  return (s.stage === 'bid' && n >= s.endsAt) || (s.stage === 'res' && n >= s.resUntil) || (s.stage === 'rtm' && n >= s.rtmUntil);
 };
 
 function tick(s) {
@@ -658,6 +761,7 @@ function tick(s) {
     for (let g = 0; g < 500; g++) {
       const now = Date.now();
       if (s.stage === 'bid' && now >= s.endsAt) { settle(s, now); ch = true; }
+      else if (s.stage === 'rtm' && now >= s.rtmUntil) { rtmResolve(s, now, false); ch = true; }
       else if (s.stage === 'res' && now >= s.resUntil && s.phase === 'auction') { nextLot(s, now); ch = true; }
       else break;
     }
@@ -677,10 +781,36 @@ function settle(s, now) {
     }
   }
   if (!sold) { s.un.push(s.cur); s.res = { k: 'unsold', i: s.cur }; s.log.push('Unsold: ' + p.n); }
+  s.rn = (s.rn || 0) + 1;
+  s.last = { i: s.i, cur: s.cur, sold, t: sold ? s.lead : null, a: s.bid, at: now, acc: s.acc ? 1 : 0 };
+  const fm = p.t;                                        // Right to Match: the player's 2026 team may take him at the winning price
+  if (sold && !s.acc && (s.rtmN || 0) > 0 && fm && fm !== s.lead && s.tm[fm] && s.tm[fm].rtm > 0 && rtmOk(s, fm, s.bid)) {
+    s.stage = 'rtm'; s.rtm = { t: fm, w: s.lead, a: s.bid, i: s.cur }; s.rtmUntil = now + RTM_MS;
+    s.log.push('RTM: ' + fm.toUpperCase() + ' can match ' + s.bid + ' Cr for ' + p.n + ' (10 s)'); return;
+  }
+  s.stage = 'res'; s.resUntil = now + RES_MS;
+}
+const rtmOk = (s, tid, amt) => { const t = s.tm[tid], p = P[s.cur]; return t.sq.length < msq(s) && !(p.c !== 'IND' && t.os >= osl(s)) && t.purse - amt >= Math.max(0, Math.min(14, msq(s)) - t.sq.length) * .5 - 1e-9; };
+function rtmResolve(s, now, use) {
+  const R = s.rtm; s.rtm = null; const p = P[R.i];
+  if (use && rtmOk(s, R.t, R.a)) {
+    const W = s.tm[R.w], T = s.tm[R.t], k = W.sq.findIndex(x => x[0] === R.i);
+    if (k >= 0) {
+      W.sq.splice(k, 1); W.purse = r2(W.purse + R.a); if (p.c !== 'IND') W.os--;
+      T.purse = r2(T.purse - R.a); T.sq.push([R.i, R.a]); if (p.c !== 'IND') T.os++; T.rtm--;
+      s.res = { k: 'sold', i: R.i, t: R.t, a: R.a, rtm: 1 };
+      if (s.last) { s.last.t = R.t; s.last.rtm = 1; }
+      s.log.push('RTM used! ' + p.n + ' goes to ' + R.t.toUpperCase() + ' for ' + R.a + ' Cr');
+    }
+  } else s.log.push('RTM not used by ' + R.t.toUpperCase());
   s.stage = 'res'; s.resUntil = now + RES_MS;
 }
 
 function nextLot(s, now) {
+  if (s.sponsorOn && !s.sponsored && !s.acc && s.order && s.i + 1 >= Math.floor(s.order.length / 2)) {      // once, half-way: +5 Cr to the team with the smallest squad
+    const ids = Object.keys(s.tm).sort((a, b) => s.tm[a].sq.length - s.tm[b].sq.length || s.tm[a].purse - s.tm[b].purse);
+    s.tm[ids[0]].purse = r2(s.tm[ids[0]].purse + 5); s.sponsored = 1; s.log.push('💰 Sponsor bonus: +5 Cr for ' + ids[0].toUpperCase() + ' (smallest squad)');
+  }
   s.i++;
   for (;; s.i++) {
     const full = Object.keys(s.tm).every(t => s.tm[t].sq.length >= msq(s));
@@ -694,7 +824,7 @@ function nextLot(s, now) {
     if (!Object.keys(s.tm).some(t => { s.passed = []; return !why(s, t, baseOf(s, idx)); })) { s.un.push(idx); continue; }
     break;
   }
-  s.stage = 'bid'; s.bid = 0; s.lead = null; s.passed = []; s.res = null; s.endsAt = now + bidMs(s);
+  s.stage = 'bid'; s.bid = 0; s.lead = null; s.passed = []; s.res = null; s.auto = {}; s.nb = 0; s.endsAt = now + bidMs(s);
   s.log.push('Next up: ' + P[s.cur].n + ' (' + P[s.cur].r + ', ' + P[s.cur].c + '), base ' + baseOf(s, s.cur) + ' Cr' + (s.acc ? ' (accelerated)' : ''));
 }
 
@@ -716,16 +846,16 @@ function startAcc(s, now) {
   nextLot(s, now);
 }
 
-function finish(s) { s.phase = 'done'; s.stage = 'done'; s.log.push('Auction complete!'); }
+function finish(s) { s.phase = 'done'; s.stage = 'done'; s.log.push('Auction complete!'); recordHistory(s); }
 
 /* ---------- what each device sees (no player ids are ever sent) ---------- */
 function view(s, pid) {
   const me = s.players[pid];
   return {
-    ok: 1, now: Date.now(), seq: s.seq, maxsq: msq(s), bidMs: bidMs(s), bumpMs: bumpMs(s), acc: s.acc ? 1 : 0, base: s.cur != null ? baseOf(s, s.cur) : 0, osl: osl(s), pzLeft: 99, hold: s.hold ? { name: s.hold.name, team: s.hold.team, until: s.hold.until, mine: s.hold.by === pid } : null, paused: s.phase === 'auction' && !!s.pausedAt, pausedAt: s.pausedAt || 0, pend: (s.trades || []).slice(0, 1).map(t => [t.from, t.to])[0] || null, code: s.code, phase: s.phase, stage: s.stage || null, pool: s.pool,
+    ok: 1, now: Date.now(), seq: s.seq, maxsq: msq(s), bidMs: bidMs(s), bumpMs: bumpMs(s), acc: s.acc ? 1 : 0, base: s.cur != null ? baseOf(s, s.cur) : 0, osl: osl(s), pzLeft: 99, hold: s.hold ? { name: s.hold.name, team: s.hold.team, until: s.hold.until, mine: s.hold.by === pid } : null, locked: !!s.locked, opts: { timer: s.timer || 'classic', rtm: s.rtmN || 0, form: !!s.formOn, sponsor: !!s.sponsorOn }, rn: s.rn || 0, auto: (me.team && s.auto && s.auto[me.team]) || 0, fcur: (s.cur != null && s.form && s.form[s.cur]) || 0, form: s.phase === 'done' ? (s.form || {}) : null, xi: s.phase === 'done' ? (s.xi || {}) : null, rtm: s.stage === 'rtm' && s.rtm ? { t: s.rtm.t, w: s.rtm.w, a: s.rtm.a, until: s.rtmUntil } : null, hostAway: !!(s.hostAway && Date.now() - s.hostAway >= HOST_AWAY_MS), paused: s.phase === 'auction' && !!s.pausedAt, pausedAt: s.pausedAt || 0, pend: (s.trades || []).slice(0, 1).map(t => [t.from, t.to])[0] || null, code: s.code, phase: s.phase, stage: s.stage || null, pool: s.pool,
     you: { pid, team: me.team, isHost: pid === s.host },
-    players: Object.entries(s.players).map(([k, p]) => ({ name: p.name, team: p.team, host: k === s.host })),
-    teams: s.tm ? Object.entries(s.tm).map(([id, t]) => ({ id, owner: t.owner, purse: t.purse, os: t.os, sq: t.sq })) : [],
+    players: Object.entries(s.players).map(([k, p], n) => ({ n, name: p.name, team: p.team, host: k === s.host, me: k === pid })),
+    teams: s.tm ? Object.entries(s.tm).map(([id, t]) => ({ id, owner: t.owner, purse: t.purse, os: t.os, sq: t.sq, rtm: t.rtm || 0 })) : [],
     cur: s.cur, i: s.i, total: s.order ? s.order.length : 0, setLabel: s.acc ? 'Accelerated round (half base price)' : s.setn && s.cur != null ? s.setn[s.setOf[s.cur]] : '',
     bid: s.bid, lead: s.lead, endsAt: s.endsAt, passed: s.passed || [], res: s.res || null, un: s.un || [],
     pick: s.stage === 'pick' ? { pool: s.accPool, mine: (me.team && s.picks[me.team]) || [], ready: s.ready, max: MAX_PICK, teams: Object.keys(s.tm) } : null,
@@ -733,6 +863,38 @@ function view(s, pid) {
     chat: (s.chat || []).slice(-40).map(m => [m.id, m.name, m.team, m.text, m.ts, m.pid === pid ? 1 : 0]),
     trades: (s.trades || []).filter(t => me.team && (t.from === me.team || t.to === me.team) && Date.now() < t.at + TRADE_TTL).map(t => ({ id: t.id, from: t.from, to: t.to, gp: t.gp, gc: t.gc, rp: t.rp, rc: t.rc, exp: t.at + TRADE_TTL }))
   };
+}
+
+
+/* ---------- backup: the host downloads the whole room, and can restore it later (even on another server) ---------- */
+function snapshot(s) {
+  const o = JSON.parse(JSON.stringify(s, (k, v) => k === 'clients' ? undefined : v));
+  delete o.players; delete o.host; delete o.code; delete o.hold; delete o.trades; delete o.chat; delete o.hostAway;
+  return { app: 'ipl-auction', v: 1, savedAt: Date.now(), room: o };
+}
+function importRoom(r, name) {
+  const sn = r.snap, o = sn && sn.app === 'ipl-auction' && sn.room;
+  if (!o || typeof o !== 'object') throw new Error('That is not an IPL Auction backup file.');
+  const okIdx = i => Number.isInteger(i) && i >= 0 && i < P.length;
+  if (!['lobby', 'auction', 'done'].includes(o.phase)) throw new Error('Backup is damaged (phase).');
+  if (o.phase !== 'lobby') {
+    if (!o.tm || typeof o.tm !== 'object' || !Array.isArray(o.order) || !o.order.every(okIdx)) throw new Error('Backup is damaged (teams).');
+    for (const id of Object.keys(o.tm)) {
+      const t = o.tm[id];
+      if (!TEAM_IDS.includes(id) || !t || !Array.isArray(t.sq) || !t.sq.every(x => Array.isArray(x) && okIdx(x[0]) && isFinite(x[1])) || !isFinite(t.purse)) throw new Error('Backup is damaged (' + id + ').');
+    }
+  }
+  let code; do { code = Array.from({length:4}, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)]).join(''); } while (rooms.has(code));
+  const pid = uid(), now = Date.now();
+  const s = Object.assign({}, o, { code, host: pid, players: { [pid]: { name, team: null } }, seq: 1, clients: new Set(), touched: now, trades: [], hold: null, pausedAt: 0, chat: [] });
+  if (s.phase === 'auction') {                          // nobody is connected yet: give everyone time to rejoin and take their team
+    s.log = (s.log || []).concat('Room restored from a backup. Take your team below, then the auction goes on.');
+    if (s.stage === 'bid') s.endsAt = now + 30000; else if (s.stage === 'res') s.resUntil = now + 3000; else if (s.stage === 'rtm') s.rtmUntil = now + 10000;
+    s.hold = { by: pid, name: name, team: null, until: 0 };       // start paused: the host taps Resume when the owners are back
+    s.pausedAt = now;
+  }
+  rooms.set(code, s); persist();
+  return view(s, pid);
 }
 
 /* ---------- clock: settles lots and resumes after trades, pushes to everyone ---------- */
@@ -743,7 +905,13 @@ setInterval(() => {                                   // forget rooms nobody has
   const old = Date.now() - 6 * 3600 * 1000;
   for (const [k, s] of rooms) if (s.clients.size === 0 && s.touched < old) { rooms.delete(k); persist(); }
 }, 600000);
-setInterval(() => { for (const s of rooms.values()) for (const c of s.clients) { try { c.res.write(': ping\n\n'); } catch (e) { s.clients.delete(c); } } }, 15000);
+setInterval(() => {
+  for (const s of rooms.values()) {
+    for (const c of s.clients) { try { c.res.write(': ping\n\n'); } catch (e) { s.clients.delete(c); } }
+    const here = [...s.clients].some(c => c.pid === s.host);
+    if (here) s.hostAway = 0; else if (!s.hostAway) s.hostAway = Date.now();
+  }
+}, 15000);
 
 /* ---------- http ---------- */
 restore();
@@ -759,6 +927,13 @@ http.createServer((req, res) => {
     if (!s || !s.players[url.searchParams.get('pid')] || !s.setn) return send(res, 200, JSON.stringify({ err: 'No auction running.' }));
     return send(res, 200, JSON.stringify({ names: s.setn, setOf: P.map((_, i) => s.setOf[i] === undefined ? -1 : s.setOf[i]) }));
   }
+  if (req.method === 'GET' && url.pathname === '/export') {
+    const code = String(url.searchParams.get('code') || '').toUpperCase(), s = rooms.get(code), pid = url.searchParams.get('pid');
+    if (!s || !s.players[pid] || pid !== s.host) return send(res, 403, JSON.stringify({ err: 'Only the host can download a backup.' }));
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Disposition': 'attachment; filename="ipl-auction-' + code + '.json"', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(snapshot(s)));
+  }
+  if (req.method === 'GET' && url.pathname === '/history') return send(res, 200, JSON.stringify({ h: HIST.slice(-60) }));
   if (req.method === 'GET' && url.pathname === '/meta') return send(res, 200, JSON.stringify({ P }));
 
   if (req.method === 'GET' && url.pathname === '/events') {
@@ -775,9 +950,9 @@ http.createServer((req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/api') {
     let body = '';
-    req.on('data', d => { body += d; if (body.length > 20000) req.destroy(); });
+    req.on('data', d => { body += d; if (body.length > 600000) req.destroy(); });
     req.on('end', () => {
-      try { send(res, 200, JSON.stringify(handle(JSON.parse(body || '{}')))); }
+      try { const b = JSON.parse(body || '{}'); if (limited(String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress, b.a)) throw new Error('Too many requests. Please wait a minute.'); send(res, 200, JSON.stringify(handle(b))); }
       catch (e) { send(res, 200, JSON.stringify({ err: String(e && e.message || e) })); }
     });
     return;

@@ -211,10 +211,20 @@ details{margin:8px 0;border:1px solid var(--ln);border-radius:12px;padding:4px 1
 .crow{display:flex;gap:8px}.crow .tx{margin:0;flex:1}.crow .btn{padding:10px 16px}
 .react{display:flex;justify-content:space-around;margin:6px 0}.react[hidden]{display:none}
 .fl{position:fixed;bottom:90px;font-size:34px;pointer-events:none;animation:flup 2.2s ease-out forwards;z-index:70}@keyframes flup{from{transform:translateY(0) scale(.6);opacity:1}to{transform:translateY(-55vh) scale(1.4);opacity:0}}
+
+#rcn{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;z-index:80;background:var(--bad);color:#fff;text-align:center;font-weight:800;padding:6px;font-size:14px}
+.bigtap .bb,.bigtap .btn,.bigtap .tk,.bigtap .chip,.bigtap select{min-height:54px;font-size:1.08em}
+body.hc{--ink:#fff;--mute:#d6deef;--ln:#7d8fb8}
+body.tv #ctl,body.tv #host,body.tv #trrow,body.tv #abx,body.tv #abn,body.tv #need,body.tv .react,body.tv #stbrow,body.tv #hw{display:none!important}
+body.tv .stage{height:56vh}body.tv .card{zoom:1.3}body.tv .bidbox .amt{font-size:92px}body.tv .chip{font-size:20px}body.tv .cm{font-size:26px}
+.mn{display:grid;gap:8px;margin:10px 0}.mn .btn{width:100%;text-align:left}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}.tbl td,.tbl th{padding:5px 6px;border-bottom:1px solid var(--ln);text-align:right}.tbl td:first-child,.tbl th:first-child{text-align:left}
+.rc{display:grid;gap:8px}.rc div{background:var(--glass);border:1px solid var(--ln);border-radius:12px;padding:8px 10px;font-size:14px}.rc b{color:var(--gold)}
+.star{background:none;border:0;font-size:20px;padding:2px 6px}
 </style>
 </head>
 <body>
-<header><b>🏏 IPL Auction 3D</b><span id="lot"></span><div class="hb"><button class="btn g" id="chatb" hidden>💬<span class="badge" id="cbadge" hidden></span></button><button class="btn g" id="setsb" hidden>📋 Sets</button><button class="btn g" id="leave" hidden>Leave</button></div></header>
+<header><b>🏏 IPL Auction 3D</b><span id="lot"></span><div class="hb"><button class="btn g" id="chatb" hidden>💬<span class="badge" id="cbadge" hidden></span></button><button class="btn g" id="setsb" hidden>📋 Sets</button><button class="btn g" id="menub" hidden>☰</button><button class="btn g" id="leave" hidden>Leave</button></div></header>
 
 <section id="home">
   <h2>Multiplayer auction</h2>
@@ -224,11 +234,15 @@ details{margin:8px 0;border:1px solid var(--ln);border-radius:12px;padding:4px 1
   <p class="s" style="text-align:center">or join a friend</p>
   <input class="tx" id="cd" maxlength="4" placeholder="Room code" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase;text-align:center;letter-spacing:6px">
   <button class="btn g" id="jn" style="width:100%;padding:14px">Join room</button>
+  <button class="btn g" id="rs" style="width:100%;padding:12px;margin-top:6px">💾 Restore a saved room (backup file)</button>
+  <input type="file" id="rf" accept=".json,application/json" hidden>
+  <p class="s" style="text-align:center">The host can download a backup during or after an auction and restore it later, even after the server restarted.</p>
   <p class="err" id="herr"></p>
 </section>
 
 <section id="lobby" hidden>
   <p class="s" style="margin:0;text-align:center">Room code, share it</p><div class="big" id="rc"></div>
+  <div class="row2"><button class="btn g" id="inv">📨 Invite friends (link)</button></div>
   <div class="strip" id="pl"></div>
   <h2>Pick your team</h2>
   <p class="s" id="rule"></p>
@@ -236,7 +250,11 @@ details{margin:8px 0;border:1px solid var(--ln);border-radius:12px;padding:4px 1
   <div class="grid" id="tg"></div>
   <div id="hostbox" hidden>
     <div class="opt"><label>Player pool <select id="oP"><option value="sq26">IPL 2026 squads<option value="all">Everyone<option value="core">Classic</select></label>
-    <label>Players per team <select id="oS"><option value="15">15<option value="18">18<option value="21">21<option value="25">25</select></label></div>
+    <label>Players per team <select id="oS"><option value="15">15<option value="18">18<option value="21">21<option value="25">25</select></label>
+    <label>Bid timer <select id="oT"><option value="classic">Classic (10 s)<option value="blitz">Blitz (5 s)<option value="calm">Calm (20 s)</select></label>
+    <label>Right to Match cards per team <select id="oR"><option value="0">Off<option value="1">1<option value="2">2</select></label>
+    <label>Form boosts (random ±3 rating) <select id="oF"><option value="1">On<option value="0">Off</select></label>
+    <label>Sponsor bonus (+5 Cr, smallest squad, once) <select id="oB"><option value="0">Off<option value="1">On</select></label></div>
     <button class="btn" id="go" style="width:100%">Start auction</button>
   </div>
   <p class="s" id="wait" hidden>Waiting for the host to start… Squad size: <b id="sqn"></b> players per team.</p>
@@ -247,8 +265,12 @@ details{margin:8px 0;border:1px solid var(--ln);border-radius:12px;padding:4px 1
   <div class="bidbox"><div style="flex:1"><small>Current bid</small><div class="amt" id="amt">₹0 Cr</div></div><div id="ldr" style="text-align:right"></div></div>
   <div style="display:flex;align-items:center;gap:10px"><div class="bar" style="flex:1"><i id="bar"></i></div><div class="tl" id="tl"></div></div>
   <p class="cm" id="cm"></p>
-  <div id="host" class="skiprow" hidden><button class="btn g" id="sell"></button><button class="btn g" id="skset">⏭⏭ Skip set</button><button class="btn g" id="endA">End</button></div>
+  <div id="host" class="skiprow" hidden><button class="btn g" id="sell"></button><button class="btn g" id="skset">⏭⏭ Skip set</button><button class="btn g" id="endA">End</button><button class="btn g" id="bkp">💾 Backup</button><button class="btn g" id="undo">↩ Undo last</button></div>
+  <div id="hw" class="skiprow" hidden><button class="btn g" id="hwb" style="flex:1">👑 The host left. Tap to become host</button></div>
   <div class="ctl" id="ctl"></div>
+  <div id="abx" class="row2" hidden><button class="btn g" id="jmp">+1 Cr jump</button><input class="tx" id="abm" type="number" inputmode="decimal" step="0.25" min="0" placeholder="Auto-bid max ₹ Cr" style="margin:0"><button class="btn g" id="abs">Set / clear auto</button></div>
+  <p class="s" id="abn" hidden></p><p class="s" id="need" hidden></p>
+  <div class="skiprow" id="stbrow"><button class="btn g" id="stb" style="flex:1">☆ Watch this player</button></div>
   <div class="react" id="react" hidden></div>
   <div class="skiprow" id="trrow" hidden><button class="btn g" id="pzbtn" style="flex:1"></button><button class="btn g" id="trbtn" style="flex:1">🔄 Trade</button></div>
   <p class="s" style="margin:12px 0 2px">Teams (tap for squad)</p>
@@ -257,6 +279,7 @@ details{margin:8px 0;border:1px solid var(--ln);border-radius:12px;padding:4px 1
 
 <section id="pick" hidden></section>
 <section id="end" hidden></section>
+<div id="rcn" hidden>Reconnecting to the server…</div>
 <div id="chat" hidden><div class="chh"><b>Chat</b><button class="btn g" id="cclose">Close</button></div><div id="cmsgs"></div><div id="emo"></div><div class="crow"><input class="tx" id="ctx" maxlength="200" placeholder="Type a message" autocomplete="off"><button class="btn" id="csend">Send</button></div></div>
 <div id="ov"></div><canvas id="cf"></canvas><div id="md"><div id="mdb"></div></div><div id="toast"></div>
 
@@ -276,10 +299,10 @@ const crest=(t,s=40)=>`<svg width="${s}" height="${s}" viewBox="0 0 100 100" ari
 function cardHTML(p){const h=hs(p.n),cl=v=>Math.max(1,Math.min(99,v)),r=p.r,q=p.q,
 bat=cl(r==='BAT'?q:r==='WK'?q-2:r==='AR'?q-6:30+h%20),bowl=cl(r==='BOWL'?q:r==='AR'?q-7:r==='BAT'?25+h%15:15),fld=cl(60+(h>>4)%36),imp=cl(q-3+(h>>6)%7),
 tier=q>=90?['leg','LEGEND']:q>=85?['eli','ELITE']:q>=80?['pro','PRO']:['rise','RISING'];
-return `<div class="face tr-${tier[0]}"><div class="shine"></div><div class="tb">${tier[1]}</div><div class="rt">${q}<small>${r}</small></div><div class="av">${face(p,100)}</div><div class="nm">${p.n}</div><div class="meta">${p.c}${p.bt?' • '+BTN[p.bt]:''} • ${p.m!=null?'IPL 2026: '+p.m+' M':'T20 ratings'}</div>${LB[p.n]?`<div class="meta lbm">${LB[p.n][0]} runs • avg ${LB[p.n][1]} • SR ${LB[p.n][2]}</div>`:''}<div class="sts">${[['BAT',bat],['BOWL',bowl],['FIELD',fld],['IMPACT',imp]].map(a=>`<div class="st"><span>${a[0]}</span><b>${a[1]}</b><i style="--w:${a[1]}%"></i></div>`).join('')}</div><div class="base">${p.acc?'Accelerated • ':''}Base ${cr(p.b)}</div></div>`}
+return `<div class="face tr-${tier[0]}"><div class="shine"></div><div class="tb">${tier[1]}</div>${p.fm?`<div class="tb" style="top:74px;left:auto;right:12px;background:${p.fm>0?'#1a7f4b':'#a32636'}">FORM ${p.fm>0?'+':''}${p.fm}</div>`:''}<div class="rt">${q}<small>${r}</small></div><div class="av">${face(p,100)}</div><div class="nm">${p.n}</div><div class="meta">${p.c}${p.bt?' • '+BTN[p.bt]:''} • ${p.m!=null?'IPL 2026: '+p.m+' M':'T20 ratings'}</div>${LB[p.n]?`<div class="meta lbm">${LB[p.n][0]} runs • avg ${LB[p.n][1]} • SR ${LB[p.n][2]}</div>`:''}<div class="sts">${[['BAT',bat],['BOWL',bowl],['FIELD',fld],['IMPACT',imp]].map(a=>`<div class="st"><span>${a[0]}</span><b>${a[1]}</b><i style="--w:${a[1]}%"></i></div>`).join('')}</div><div class="base">${p.acc?'Accelerated • ':''}Base ${cr(p.b)}</div></div>`}
 
 function pickXI(q){const s=[...q].sort((a,b)=>b.q-a.q),x=[];let os=0;const add=p=>{if(!p||x.includes(p)||x.length>=11||(p.c!=='IND'&&os>=4))return;x.push(p);if(p.c!=='IND')os++};add(s.find(p=>p.r==='WK'));s.filter(p=>p.r==='BOWL').slice(0,3).forEach(add);s.filter(p=>p.r==='AR').slice(0,2).forEach(add);s.filter(p=>p.r==='BAT').slice(0,3).forEach(add);s.forEach(add);return x}
-function perf(t){const q=t.sq,X=pickXI(q),by=r=>X.filter(p=>r.includes(p.r)).map(p=>p.q-(p.r==='AR'?4:0)).sort((a,b)=>b-a),av=(a,n)=>(a.slice(0,n).reduce((x,y)=>x+y,0)+Math.max(0,n-a.length)*60)/n,sc=(v,m)=>Math.max(0,Math.min(m,(v-60)/35*m));
+function perf(t){const q=t.sq,X0=(t.xi&&t.xi.length===11)?t.xi.map(i=>q.find(p=>p.id===i)).filter(Boolean):[],X=X0.length===11?X0:pickXI(q),by=r=>X.filter(p=>r.includes(p.r)).map(p=>p.q-(p.r==='AR'?4:0)).sort((a,b)=>b-a),av=(a,n)=>(a.slice(0,n).reduce((x,y)=>x+y,0)+Math.max(0,n-a.length)*60)/n,sc=(v,m)=>Math.max(0,Math.min(m,(v-60)/35*m));
 const bench=q.filter(p=>!X.includes(p)).map(p=>p.q).sort((a,b)=>b-a),bw=by(['BOWL','AR']),bt=by(['BAT','WK','AR']);
 const xi=sc(av(X.map(p=>p.q),11),40),bat=sc(av(bt,6),15),bowl=sc(av(bw,5),15),bal=(X.some(p=>p.r==='WK')?2:0)+(bw.length>=5?2:0)+(bt.length>=6?2:0)+(X.some(p=>p.r==='AR')?1:0)+(X.some(p=>p.bt==='S')?1:0)+(X.some(p=>p.bt==='M')?1:0)+(X.some(p=>p.bt==='F')?1:0),dep=sc(av(bench,4),10),star=Math.min(10,q.filter(p=>p.q>=90).length*3+q.filter(p=>p.q>=85&&p.q<90).length);
 return{xi,bat,bowl,bal,dep,star,X,val:X.reduce((a,p)=>a+p.q,0)/Math.max(1,100-t.purse),total:Math.round(xi+bat+bowl+bal+dep+star)}}
@@ -304,7 +327,7 @@ function apply(o){off=o.now-Date.now();if(o.same)return;if(V&&o.seq<V.seq)return
 async function act(a,x){inflight++;try{apply(await call({a,code:ME.code,pid:ME.pid,...x}));return true}catch(e){toast(e.message);return false}finally{inflight--}}
 /* live updates: the server pushes every change, so bids appear on all phones at once */
 let es=null;
-function connect(){if(es)es.close();es=new EventSource('/events?code='+encodeURIComponent(ME.code)+'&pid='+encodeURIComponent(ME.pid));
+function connect(){if(es)es.close();es=new EventSource('/events?code='+encodeURIComponent(ME.code)+'&pid='+encodeURIComponent(ME.pid));es.onopen=()=>{$('rcn').hidden=true};es.onerror=()=>{$('rcn').hidden=false};
   es.onmessage=m=>{const o=JSON.parse(m.data);if(o.err){es.close();es=null;try{localStorage.removeItem('iplmp')}catch(x){}location.reload();return}apply(o)}}
 const pollNow=()=>{};
 
@@ -312,13 +335,15 @@ async function enter(a){const name=$('nm').value.trim(),code=$('cd').value.trim(
   try{if(!P.length)P=(await call({a:'meta'})).P;ME.name=name;apply(await call({a,name,code,pid:ME.code===code?ME.pid:''}))}catch(e){$('herr').textContent=e.message}}
 $('mk').onclick=()=>enter('create');$('jn').onclick=()=>enter('join');
 $('leave').onclick=()=>{try{localStorage.removeItem('iplmp')}catch(e){}location.reload()};
-(async()=>{try{const s=JSON.parse(localStorage.getItem('iplmp')||'null');if(s&&s.code){P=(await call({a:'meta'})).P;ME=s;apply(await call({a:'join',name:s.name||'Player',code:s.code,pid:s.pid}))}}catch(e){try{localStorage.removeItem('iplmp')}catch(x){}}})();
+const QS=new URLSearchParams(location.search);if(QS.get('room'))$('cd').value=QS.get('room').toUpperCase().slice(0,4);
+(async()=>{if(QS.get('tv')){try{document.body.classList.add('tv');P=(await call({a:'meta'})).P;ME.name='Big screen';apply(await call({a:'join',name:'Big screen',code:QS.get('tv').toUpperCase(),pid:''}));return}catch(e){$('herr').textContent=e.message}}
+  try{const s=JSON.parse(localStorage.getItem('iplmp')||'null');if(s&&s.code){P=(await call({a:'meta'})).P;ME=s;apply(await call({a:'join',name:s.name||'Player',code:s.code,pid:s.pid}))}}catch(e){try{localStorage.removeItem('iplmp')}catch(x){}}})();
 
 /* ---- helpers ---- */
 const inc=b=>b<2?.25:b<5?.5:1,nextBid=()=>V.lead?Math.round((V.bid+inc(V.bid))*100)/100:V.base;
 const myT=()=>V.you.team?V.teams.find(t=>t.id===V.you.team):null;
 const whyC=(t,amt)=>{const p=P[V.cur];return V.passed.includes(t.id)?'Passed':t.sq.length>=V.maxsq?'Squad full':(p.c!=='IND'&&t.os>=V.osl)?'Overseas full':t.purse-amt<Math.max(0,14-t.sq.length)*.5?'Purse low':''};
-const tObj=t=>({...TM[t.id],purse:t.purse,sq:t.sq.map(([i,paid])=>({...P[i],paid}))});
+const tObj=t=>({...TM[t.id],purse:t.purse,xi:(V.xi&&V.xi[t.id])||null,sq:t.sq.map(([i,paid])=>({...P[i],id:i,paid,q:P[i].q+((V.form&&V.form[i])||0)}))});
 function modal(h){TOPEN=false;$('mdb').innerHTML=h+'<p><button class="btn g" onclick="$(\'md\').style.display=\'none\'">Close</button></p>';$('md').style.display='flex'}
 const closeMd=()=>{$('md').style.display='none';TOPEN=false};let TOPEN=false;
 $('md').onclick=e=>{if(e.target.id==='md')closeMd()};
@@ -328,20 +353,22 @@ $('strip').onclick=e=>{const b=e.target.closest('.chip');if(b)squad(b.dataset.id
 /* ---- screens ---- */
 const show=id=>['home','lobby','game','pick','end'].forEach(k=>$(k).hidden=k!==id);
 let cardKey=null,ovKey=null,lastBid=null;
-function render(prev){$('leave').hidden=false;$('setsb').hidden=V.phase==='lobby';chatUpdate();
+function render(prev){$('leave').hidden=false;$('menub').hidden=false;$('setsb').hidden=V.phase==='lobby';chatUpdate();
   if(V.phase==='lobby'){show('lobby');lobby()}else if(V.phase==='auction'&&V.stage==='pick'){show('pick');pickUI()}else if(V.phase==='auction'){show('game');game(prev)}else{show('end');ending()}}
 function lobby(){$('rc').textContent=V.code;
   $('pl').innerHTML=V.players.map(p=>`<span class="chip">${esc(p.name)}${p.host?' 👑':''}${p.team?' • '+TM[p.team].s:''}</span>`).join('');
   $('tg').innerHTML=T.map(t=>{const o=V.players.find(p=>p.team===t.id),mine=V.you.team===t.id;return `<button class="tc ${o?'h':''}" data-id="${t.id}" style="--c:${t.c1}">${crest(t,64)}<small>${t.n}</small><em>${o?(mine?'You':esc(o.name)):'Free, tap to pick'}</em></button>`}).join('');
   $('hostbox').hidden=!V.you.isHost;$('wait').hidden=V.you.isHost;if(document.activeElement!==$('oP'))$('oP').value=V.pool;if(document.activeElement!==$('oS'))$('oS').value=V.maxsq;
-  $('sqn').textContent=V.maxsq;$('rule').innerHTML=`Squad of <b>${V.maxsq}</b>: at least <b>${V.maxsq-V.osl} Indian</b>, at most <b>${V.osl} overseas</b> players.`}
+  [['oT',V.opts.timer],['oR',V.opts.rtm],['oF',V.opts.form?1:0],['oB',V.opts.sponsor?1:0]].forEach(([k,v])=>{if(document.activeElement!==$(k))$(k).value=v});
+  $('sqn').textContent=V.maxsq;$('rule').innerHTML=`Squad of <b>${V.maxsq}</b>: at least <b>${V.maxsq-V.osl} Indian</b>, at most <b>${V.osl} overseas</b> players. Timer: <b>${V.opts.timer}</b>, RTM: <b>${V.opts.rtm||'off'}</b>, form boosts: <b>${V.opts.form?'on':'off'}</b>, sponsor bonus: <b>${V.opts.sponsor?'on':'off'}</b>.${V.locked?' 🔒 Room locked.':''}`}
 $('tg').onclick=e=>{const b=e.target.closest('.tc');if(!b)return;act(V.you.team===b.dataset.id?'unclaim':'claim',{team:b.dataset.id})};
 $('oP').onchange=e=>act('opt',{pool:e.target.value});$('oS').onchange=e=>act('opt',{sq:+e.target.value});
+$('oT').onchange=e=>act('opt',{timer:e.target.value});$('oR').onchange=e=>act('opt',{rtm:+e.target.value});$('oF').onchange=e=>act('opt',{form:+e.target.value});$('oB').onchange=e=>act('opt',{sponsor:+e.target.value});
 $('go').onclick=()=>act('start');
 
-function game(prev){const p={...P[V.cur],b:V.base,acc:V.acc},t=myT();
+function game(prev){const p={...P[V.cur],b:V.base,acc:V.acc,q:P[V.cur].q+(V.fcur||0),fm:V.fcur||0},t=myT();
   $('lot').textContent=`Lot ${V.i+1}/${V.total} • ${V.setLabel}`;
-  if(cardKey!==V.cur+'/'+V.acc){cardKey=V.cur+'/'+V.acc;const c=$('card');c.classList.remove('in');void c.offsetWidth;c.classList.add('in');c.innerHTML=cardHTML(p);SFX.lot()}
+  if(cardKey!==V.cur+'/'+V.acc){cardKey=V.cur+'/'+V.acc;const c=$('card');c.classList.remove('in');void c.offsetWidth;c.classList.add('in');c.innerHTML=cardHTML(p);SFX.lot();if(STAR.has(V.cur)){toast('⭐ '+P[V.cur].n+' (your watchlist) is on the block!',true);vib([200,80,200])}}
   const nb=nextBid(),a=$('amt');a.textContent=cr(V.lead?V.bid:p.b);
   if(lastBid!==V.bid&&V.bid){a.classList.add('pop');setTimeout(()=>a.classList.remove('pop'),160);SFX.bid()}lastBid=V.bid;
   $('ldr').innerHTML=!V.lead?'<small style="color:var(--mute)">No bids yet</small>':`<div class="coin">${crest(TM[V.lead],44)}</div><div style="padding-right:56px"><b>${TM[V.lead].s}</b><small>${esc(V.teams.find(x=>x.id===V.lead).owner)}</small></div>`;
@@ -350,16 +377,28 @@ function game(prev){const p={...P[V.cur],b:V.base,acc:V.acc},t=myT();
   const live=V.stage==='bid'&&!V.paused;
   if(t){const w=whyC(t,nb),can=live&&V.lead!==t.id&&!w;
     $('ctl').innerHTML=`<div class="tp"><button class="bb" style="--c:${TM[t.id].c1}" data-amt="${nb}" ${can?'':'disabled'}>${crest(TM[t.id],28)}<span>${TM[t.id].s}<br><small>${V.lead===t.id?'You lead':w||'Bid '+cr(nb)}</small></span></button><button class="btn g pass" ${live&&V.lead!==t.id&&!V.passed.includes(t.id)?'':'disabled'}>Pass</button></div>`}
-  else $('ctl').innerHTML='<p class="s">You are watching. Join a room before it starts to bid.</p>';
+  else{const free=V.teams.filter(x=>!V.players.some(p=>p.team===x.id));
+    $('ctl').innerHTML=free.length?'<p class="s">You are watching. Is one of these your team? Tap to take it over:</p>'+free.map(x=>`<button class="bb" style="--c:${TM[x.id].c1}" data-claim="${x.id}">${crest(TM[x.id],28)}<span>${TM[x.id].n}<br><small>${esc(x.owner)} • ${cr(x.purse)} • ${x.sq.length}/${V.maxsq}</small></span></button>`).join(''):'<p class="s">You are watching. Every team has an owner.</p>'}
+  $('hw').hidden=!(V.hostAway&&!V.you.isHost&&t);$('bkp').hidden=!V.you.isHost;
+  if(V.stage==='rtm'&&V.rtm){$('cm').textContent='🃏 RTM: '+TM[V.rtm.t].n+' can match '+cr(V.rtm.a)+' for '+P[V.cur].n+' (sold to '+TM[V.rtm.w].s+').';
+    if(t&&t.id===V.rtm.t)$('ctl').innerHTML=`<div class="tp"><button class="bb" data-rtm="1" style="--c:#3ddc97">Use RTM ${cr(V.rtm.a)}<br><small>${t.rtm} card(s) left</small></button><button class="btn g pass" data-rtm="0">Skip</button></div>`}
+  $('abx').hidden=!t||V.stage!=='bid';$('abn').hidden=!t;$('need').hidden=!t;
+  if(t){const nb1=Math.round((nb+1)*100)/100,w1=whyC(t,nb1);$('jmp').disabled=!(live&&V.lead!==t.id&&!w1);$('jmp').dataset.amt=nb1;$('jmp').textContent='+1 Cr jump ('+cr(nb1)+')';
+    $('abn').textContent=V.auto?'Auto-bid is on: up to '+cr(V.auto)+' for this lot.':'Auto-bid: set a maximum and the server bids for you, one step at a time.';
+    if(document.activeElement!==$('abm'))$('abm').value=V.auto||'';$('need').textContent=needTxt(t)}
+  $('stb').textContent=STAR.has(V.cur)?'⭐ Watching (tap to remove)':'☆ Watch this player';$('undo').disabled=!!V.paused;
+  const meLead=!!(t&&V.lead===t.id);if(wasLead&&!meLead&&V.lead&&V.stage==='bid'){vib([120,60,120]);toast('You were outbid by '+TM[V.lead].s)}wasLead=meLead;
   $('host').hidden=!V.you.isHost;$('sell').textContent=V.lead?'🔨 Sell now':'⏭ Pass player';$('sell').disabled=!live;$('skset').disabled=!live||!!V.acc;
-  $('strip').innerHTML=V.teams.map(x=>`<button class="chip ${V.lead===x.id?'l':''}" data-id="${x.id}">${crest(TM[x.id],30)}<span><b>${TM[x.id].s}${x.id===V.you.team?' ★':''}</b>${cr(x.purse)} • ${x.sq.length}/${V.maxsq}</span></button>`).join('');
-  if(V.stage==='res'&&V.res&&ovKey!==V.i+'/'+V.acc){ovKey=V.i+'/'+V.acc;stamp(V.res)}
+  $('strip').innerHTML=V.teams.map(x=>`<button class="chip ${V.lead===x.id?'l':''}" data-id="${x.id}">${crest(TM[x.id],30)}<span><b>${TM[x.id].s}${x.id===V.you.team?' ★':''}</b>${cr(x.purse)} • ${x.sq.length}/${V.maxsq}${x.rtm?' • RTM '+x.rtm:''}</span></button>`).join('');
+  if(V.stage==='res'&&V.res&&ovKey!=='r'+V.rn){ovKey='r'+V.rn;stamp(V.res)}
   tradeHook()}
-$('ctl').onclick=e=>{const b=e.target.closest('.bb'),q=e.target.closest('.pass');if(b&&!b.disabled){b.disabled=true;act('bid',{amt:+b.dataset.amt})}
+$('ctl').onclick=e=>{const rt=e.target.closest('[data-rtm]');if(rt){rt.disabled=true;act(rt.dataset.rtm==='1'?'rtm':'rtmpass');return}
+  const cl=e.target.closest('[data-claim]');if(cl){cl.disabled=true;act('claim',{team:cl.dataset.claim});return}
+  const b=e.target.closest('.bb'),q=e.target.closest('.pass');if(b&&!b.disabled){b.disabled=true;act('bid',{amt:+b.dataset.amt})}
     else if(q){q.disabled=true;act('pass')}};
 $('sell').onclick=()=>act('sell');$('skset').onclick=()=>confirm('Skip the rest of this set?')&&act('skipset');$('endA').onclick=()=>confirm('End the auction for everyone?')&&act('end');
 function stamp(r){const p=P[r.i],ov=$('ov');
-  if(r.k==='sold'){const t=TM[r.t];ov.innerHTML=`<div class="stamp" style="color:${t.c2==='#FFFFFF'?'#fff':t.c1==='#1B2133'?t.c2:t.c1};border-color:currentColor">SOLD!<small>${esc(p.n)} → ${t.n}<br>${cr(r.a)}</small></div>`;confetti([t.c1,t.c2,'#f2b632']);SFX.sold()}
+  if(r.k==='sold'){const t=TM[r.t];ov.innerHTML=`<div class="stamp" style="color:${t.c2==='#FFFFFF'?'#fff':t.c1==='#1B2133'?t.c2:t.c1};border-color:currentColor">${r.rtm?'RTM ':''}SOLD!<small>${esc(p.n)} → ${t.n}<br>${cr(r.a)}</small></div>`;confetti([t.c1,t.c2,'#f2b632']);SFX.sold()}
   else{ov.innerHTML=`<div class="stamp" style="color:var(--bad);border-color:var(--bad)">UNSOLD<small>${esc(p.n)}</small></div>`;SFX.unsold()}
   ov.style.display='grid';setTimeout(()=>ov.style.display='none',2300)}
 
@@ -368,7 +407,9 @@ setInterval(()=>{if(!V||V.phase!=='auction')return;const left=Math.max(0,(V.ends
   if(V.stage==='bid'){$('bar').style.width=Math.min(100,left/((V.bidMs||10000)/1000)*100)+'%';$('tl').textContent=(V.paused?'⏸ ':'')+left.toFixed(1)+'s';
     if(V.paused)return;
     if(V.lead&&left<=3.5&&left>0)$('cm').textContent=left<=1?'Last call, sold unless someone bids!':left<=2?'Going twice…':'Going once…';
+    if(V.lead&&V.lead===V.you.team&&left<=3&&left>0&&goneKey!==V.cur+':'+V.bid){goneKey=V.cur+':'+V.bid;vib(80)}
     if(left<=0&&askedFor!==V.seq){askedFor=V.seq;setTimeout(pollNow,250)}}
+  else if(V.stage==='rtm'&&V.rtm){const l2=Math.max(0,(V.rtm.until-(V.paused?V.pausedAt:Date.now()+off))/1000);$('bar').style.width=Math.min(100,l2/10*100)+'%';$('tl').textContent='RTM '+l2.toFixed(1)+'s'}
   else{if(V.paused)return;$('bar').style.width='0';$('tl').textContent='';const r=(V.resUntil||0);if(askedFor!==V.seq+'r'){askedFor=V.seq+'r';setTimeout(pollNow,3200)}}},100);
 
 /* ---- trades ---- */
@@ -439,6 +480,13 @@ $('pick').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)
   if(b.id==='pkReady'){b.disabled=true;act('ready',{ids:[...PK]})}else if(b.id==='pkEdit'){pkSig='';act('unready')}
   else if(b.id==='pkGo'&&confirm('Start now? Teams that are not ready keep the picks they have saved.'))act('accgo')});
 
+/* ---- backup and restore ---- */
+function backup(){const a=document.createElement('a');a.href='/export?code='+encodeURIComponent(ME.code)+'&pid='+encodeURIComponent(ME.pid);a.download='ipl-auction-'+ME.code+'.json';document.body.appendChild(a);a.click();a.remove();toast('Backup downloaded. Keep the file safe.',true)}
+$('bkp').onclick=backup;$('hwb').onclick=()=>act('takehost');
+$('rs').onclick=()=>{const n=$('nm').value.trim();if(!n){$('herr').textContent='Enter your name first, then restore.';return}$('rf').click()};
+$('rf').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;$('herr').textContent='';
+  try{const snap=JSON.parse(await f.text());if(!P.length)P=(await call({a:'meta'})).P;ME.name=$('nm').value.trim();apply(await call({a:'import',name:ME.name,snap}));toast('Room restored. Share the new code so owners can take their teams.',true)}
+  catch(err){$('herr').textContent=err instanceof SyntaxError?'That file is not a valid backup.':err.message}};
 /* ---- sets: every set with its players and what happened to each ---- */
 async function openSets(){let d;try{d=await(await fetch('/sets?code='+encodeURIComponent(ME.code)+'&pid='+encodeURIComponent(ME.pid))).json()}catch(e){return toast('No connection to the server.')}
   if(d.err)return toast(d.err);
@@ -477,9 +525,119 @@ function exportCSV(){const rows=[['Team','Owner','Player','Role','Country','Pric
 function ending(){const r=V.teams.map(t=>{const o=tObj(t);return{t,o,s:perf(o).total}}).sort((a,b)=>b.s-a.s);$('lot').textContent='';
   $('end').innerHTML=`<h2>Auction complete</h2><p class="s">Ranked out of 100 on best XI, batting, bowling, balance, bench and star power. Tap a team for its squad.</p>`+
   r.map((x,k)=>`<button class="lb" data-id="${x.t.id}"><span style="font:900 20px Georgia">${k+1}</span>${crest(TM[x.t.id],44)}<b>${TM[x.t.id].n}${x.t.id===V.you.team?' ★':''}<br><small style="color:var(--mute)">${esc(x.t.owner)} • ${x.t.sq.length} players • ${cr(x.t.purse)} left</small></b><span style="font:900 22px Georgia;color:var(--gold)">${x.s}</span></button>`).join('')+
-  `<p class="s">${V.un.length} players stayed unsold, even after the accelerated round. Tap Sets (top right) to see every set and player.</p><p><button class="btn" onclick="exportCSV()">Download results (CSV)</button> <button class="btn g" onclick="$('leave').click()">New game</button></p>`;
+  `<p class="s">${V.un.length} players stayed unsold, even after the accelerated round. Tap Sets (top right) to see every set and player.</p><p><button class="btn" onclick="exportCSV()">Download results (CSV)</button> ${V.you.isHost?'<button class="btn g" onclick="backup()">💾 Backup room</button>':''} <button class="btn g" onclick="$('leave').click()">New game</button></p>
+  <div class="row2"><button class="btn" onclick="simSeason()">🏏 Simulate the season</button><button class="btn g" onclick="openXI()">📋 My playing XI</button></div>
+  <div class="row2"><button class="btn g" onclick="reportCard()">📊 Report card</button><button class="btn g" onclick="shareImg()">🖼 Share image</button><button class="btn g" onclick="openHist()">🏆 History</button></div>`;
   if(ovKey!=='end'){ovKey='end';confetti([TM[r[0].t.id].c1,TM[r[0].t.id].c2,'#f2b632'])}}
 $('end').onclick=e=>{const b=e.target.closest('.lb');if(b)squad(b.dataset.id)};
+
+/* ================= v3 features ================= */
+/* ---- settings (saved on this phone) ---- */
+let SET={mute:false,vib:true,size:100,big:false,hc:false};try{Object.assign(SET,JSON.parse(localStorage.getItem('iplset')||'{}'))}catch(e){}
+function applySet(){MUTE=!!SET.mute;document.body.style.zoom=SET.size/100;document.body.classList.toggle('bigtap',!!SET.big);document.body.classList.toggle('hc',!!SET.hc);try{localStorage.setItem('iplset',JSON.stringify(SET))}catch(e){}}
+applySet();
+const vib=p=>{if(SET.vib&&navigator.vibrate)try{navigator.vibrate(p)}catch(e){}};
+let wasLead=false,goneKey='';
+/* ---- watchlist ---- */
+let STAR=new Set();try{STAR=new Set(JSON.parse(localStorage.getItem('iplstar')||'[]'))}catch(e){}
+const saveStar=()=>{try{localStorage.setItem('iplstar',JSON.stringify([...STAR]))}catch(e){}};
+$('stb').onclick=()=>{const i=V.cur;if(STAR.has(i))STAR.delete(i);else STAR.add(i);saveStar();$('stb').textContent=STAR.has(i)?'⭐ Watching (tap to remove)':'☆ Watch this player'};
+/* ---- squad needs ---- */
+function needTxt(t){const sq=t.sq.map(x=>P[x[0]]),c=r=>sq.filter(p=>p.r===r).length,n=[];
+  if(!c('WK'))n.push('a wicketkeeper');if(c('BAT')<4)n.push((4-c('BAT'))+' batter(s)');if(c('BOWL')<4)n.push((4-c('BOWL'))+' bowler(s)');if(c('AR')<2)n.push((2-c('AR'))+' all-rounder(s)');
+  if(!sq.some(p=>p.bt==='S'))n.push('a spinner');if(!sq.some(p=>p.bt==='F'))n.push('a fast bowler');
+  const slots=Math.max(0,Math.min(14,V.maxsq)-t.sq.length);return 'Needs: '+(n.join(', ')||'nothing, well balanced')+' • Keep '+cr(slots*.5)+' for '+slots+' more players • Overseas '+t.os+'/'+V.osl}
+/* ---- bid helpers ---- */
+$('jmp').onclick=()=>{if(!$('jmp').disabled)act('bid',{amt:+$('jmp').dataset.amt,jump:1})};
+$('abs').onclick=()=>{const v=+$('abm').value;act('auto',{max:v>0?v:0})};
+$('undo').onclick=()=>{if(confirm('Undo the last result? (only within 20 seconds)'))act('undo')};
+/* ---- invite ---- */
+const inviteLink=()=>location.origin+location.pathname+'?room='+V.code, tvLink=()=>location.origin+location.pathname+'?tv='+V.code;
+async function shareText(t,u){try{if(navigator.share){await navigator.share({title:'IPL Auction',text:t,url:u});return}}catch(e){if(e&&e.name==='AbortError')return}
+  try{await navigator.clipboard.writeText(u);toast('Link copied',true)}catch(e){prompt('Copy this link',u)}}
+$('inv').onclick=()=>shareText('Join my IPL auction, room '+V.code,inviteLink());
+/* ---- menu ---- */
+function openMenu(){modal(`<h2>Menu</h2><div class="mn">
+  <button class="btn g" data-m="inv">📨 Invite link</button>
+  <button class="btn g" data-m="tvlink">📺 Big-screen link (for a TV or laptop)</button>
+  <button class="btn g" data-m="tv">📺 ${document.body.classList.contains('tv')?'Leave':'Enter'} big-screen mode on this device</button>
+  <button class="btn g" data-m="hist">🏆 History and leaderboard</button>
+  ${V.you.isHost?'<button class="btn g" data-m="room">👥 Room controls (lock, remove, make host)</button><button class="btn g" data-m="bkp">💾 Download room backup</button>':''}
+  <button class="btn g" data-m="set">⚙ Settings (sound, vibration, text size)</button></div>`)}
+$('menub').onclick=openMenu;
+$('mdb').addEventListener('click',e=>{const b=e.target.closest('[data-m]');if(!b)return;const m=b.dataset.m;
+  if(m==='inv')shareText('Join my IPL auction, room '+V.code,inviteLink());
+  else if(m==='tvlink')shareText('Big screen for IPL auction '+V.code,tvLink());
+  else if(m==='tv'){document.body.classList.toggle('tv');closeMd()}
+  else if(m==='hist')openHist();else if(m==='room')openRoom();else if(m==='bkp')backup();else if(m==='set')openSet()});
+function openSet(){modal(`<h2>Settings</h2><div class="opt">
+  <label><input type="checkbox" id="sMute" ${SET.mute?'checked':''}> Mute sounds</label>
+  <label><input type="checkbox" id="sVib" ${SET.vib?'checked':''}> Vibrate (outbid, watchlist, going once)</label>
+  <label><input type="checkbox" id="sBig" ${SET.big?'checked':''}> Larger tap targets</label>
+  <label><input type="checkbox" id="sHc" ${SET.hc?'checked':''}> High contrast text</label>
+  <label>Text size <select id="sSz"><option value="90">Small</option><option value="100">Normal</option><option value="115">Large</option><option value="130">Extra large</option></select></label></div>`);
+  $('sSz').value=String(SET.size)}
+$('mdb').addEventListener('change',e=>{const t=e.target;if(!t.id||t.id[0]!=='s'||t.id.length>5)return;
+  if(t.id==='sMute')SET.mute=t.checked;else if(t.id==='sVib')SET.vib=t.checked;else if(t.id==='sBig')SET.big=t.checked;else if(t.id==='sHc')SET.hc=t.checked;else if(t.id==='sSz')SET.size=+t.value;else return;applySet()});
+/* ---- room controls (host) ---- */
+function openRoom(){modal(`<h2>Room controls</h2><p class="s">Lock the room so nobody new can join (people already inside can still come back). Removed players can take a team again only if the room is unlocked.</p>
+  <p><button class="btn g" data-rc="lock">${V.locked?'🔓 Unlock the room':'🔒 Lock the room'}</button></p>`+
+  V.players.filter(p=>!p.me).map(p=>`<div class="pr"><b>${esc(p.name)}${p.team?' • '+TM[p.team].s:''}${p.host?' 👑':''}</b><button class="btn g" data-rc="givehost" data-n="${p.n}">Make host</button> <button class="btn g" data-rc="kick" data-n="${p.n}">Remove</button></div>`).join('')||'<p class="s">Nobody else is here yet.</p>')}
+$('mdb').addEventListener('click',async e=>{const b=e.target.closest('[data-rc]');if(!b)return;const k=b.dataset.rc;
+  if(k==='kick'&&!confirm('Remove this player from the room?'))return;if(k==='givehost'&&!confirm('Hand the host role over?'))return;
+  b.disabled=true;const ok=await act(k,{n:+b.dataset.n});if(ok&&k!=='givehost')openRoom();else if(ok)closeMd()});
+/* ---- squad-aware coach tip + playing XI picker ---- */
+function coach(o){const p=perf(o),n=[];if(!p.X.some(x=>x.r==='WK'))n.push('no wicketkeeper in the XI');if(p.X.filter(x=>['BOWL','AR'].includes(x.r)).length<5)n.push('fewer than 5 bowling options');if(p.X.filter(x=>['BAT','WK','AR'].includes(x.r)).length<6)n.push('thin batting');if(!p.X.some(x=>x.bt==='S'))n.push('no spinner');if(!p.X.some(x=>x.bt==='F'))n.push('no fast bowler');return n.length?'Coach says: '+n.join(', ')+'.':'Coach says: balanced XI. Good luck!'}
+let XIS=new Set();
+function openXI(){const t=myT();if(!t)return toast('Only team owners pick an XI.');const o=tObj(t);XIS=new Set((o.xi&&o.xi.length===11)?o.xi:perf(o).X.map(p=>p.id));drawXI(o)}
+function drawXI(o){const os=[...XIS].filter(i=>P[i].c!=='IND').length;
+  modal(`<h2>Playing XI</h2><p class="s"><b id="xic">${XIS.size}</b>/11 picked • overseas ${os}/4. ${coach({...o,xi:[...XIS].length===11?[...XIS]:null})}</p>`+o.sq.sort((a,b)=>b.q-a.q).map(p=>`<label class="tk"><input type="checkbox" data-xi="${p.id}" ${XIS.has(p.id)?'checked':''}><b>${esc(p.n)} <small>${p.r}${p.bt?' • '+BTN[p.bt]:''} • ${p.c} • rated ${p.q}</small></b></label>`).join('')+
+  '<div class="row2"><button class="btn" id="xiSave">Save my XI</button><button class="btn g" id="xiAuto">Let the coach pick</button></div>')}
+$('mdb').addEventListener('change',e=>{const c=e.target;if(!c.dataset||c.dataset.xi===undefined)return;const v=+c.dataset.xi;
+  if(c.checked){if(XIS.size>=11){c.checked=false;return toast('11 players only')}if(P[v].c!=='IND'&&[...XIS].filter(i=>P[i].c!=='IND').length>=4){c.checked=false;return toast('At most 4 overseas players')}XIS.add(v)}else XIS.delete(v);$('xic').textContent=XIS.size});
+$('mdb').addEventListener('click',async e=>{if(e.target.id==='xiSave'){if(XIS.size!==11)return toast('Pick exactly 11 players');if(await act('xi',{ids:[...XIS]}))toast('Playing XI saved',true)}
+  else if(e.target.id==='xiAuto'){if(await act('xi',{ids:[]}))toast('The coach will pick your XI',true)}});
+/* ---- season simulator (same result on every phone: seeded by the room code) ---- */
+const rng=seed=>{let a=seed>>>0;return()=>{a=(a+0x6D2B79F5)>>>0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}};
+function strength(t){const o=tObj(t),p=perf(o),av=a=>a.reduce((x,y)=>x+y,0)/Math.max(1,a.length);
+  return{id:t.id,bat:av(p.X.filter(x=>['BAT','WK','AR'].includes(x.r)).map(x=>x.q-(x.r==='AR'?4:0)).sort((a,b)=>b-a).slice(0,7)),bowl:av(p.X.filter(x=>['BOWL','AR'].includes(x.r)).map(x=>x.q-(x.r==='AR'?4:0)).sort((a,b)=>b-a).slice(0,5)),bal:p.bal}}
+function match(A,B,R){const inn=(a,b)=>Math.round(Math.max(70,Math.min(250,150+(a.bat-b.bowl)*1.6+(a.bal-b.bal)*1+(R()+R()+R()-1.5)*22))),ra=inn(A,B),rb=inn(B,A);return{ra,rb,w:ra===rb?(R()<.5?A.id:B.id):ra>rb?A.id:B.id}}
+function season(){const R=rng(hs(V.code)),S=V.teams.map(strength),T={};S.forEach(x=>T[x.id]={id:x.id,m:0,w:0,rf:0,ra:0});
+  for(let i=0;i<S.length;i++)for(let j=i+1;j<S.length;j++){const m=match(S[i],S[j],R);[[S[i].id,m.ra,m.rb],[S[j].id,m.rb,m.ra]].forEach(([id,f,a])=>{const t=T[id];t.m++;t.rf+=f;t.ra+=a;if(m.w===id)t.w++})}
+  const tab=Object.values(T).map(t=>({...t,pts:t.w*2,nrr:(t.rf-t.ra)/(20*Math.max(1,t.m))})).sort((a,b)=>b.pts-a.pts||b.nrr-a.nrr),by=id=>S.find(x=>x.id===id),po=[];
+  const play=(l,a,b)=>{const m=match(by(a),by(b),R);po.push({l,a,b,...m});return m.w};
+  let champ;
+  if(tab.length>=4){const q1=play('Qualifier 1',tab[0].id,tab[1].id),el=play('Eliminator',tab[2].id,tab[3].id),l1=q1===tab[0].id?tab[1].id:tab[0].id,q2=play('Qualifier 2',l1,el);champ=play('FINAL',q1,q2)}
+  else champ=tab.length===3?play('FINAL',tab[0].id,tab[1].id):play('FINAL',tab[0].id,tab[1].id);
+  return{tab,po,champ}}
+function simSeason(){if(V.teams.length<2)return toast('Need at least 2 teams');const r=season(),oc=id=>esc(V.teams.find(t=>t.id===id).owner);
+  modal(`<h2>Season simulation</h2><p class="s">Each team plays every other once (2 points per win). Uses your playing XIs and ratings. Same result on every phone.</p>
+  <table class="tbl"><tr><th>Team</th><th>P</th><th>W</th><th>Pts</th><th>NRR</th></tr>${r.tab.map((t,k)=>`<tr><td>${k<4?'✅ ':''}${TM[t.id].s}</td><td>${t.m}</td><td>${t.w}</td><td>${t.pts}</td><td>${t.nrr>=0?'+':''}${t.nrr.toFixed(2)}</td></tr>`).join('')}</table>
+  <div class="sh">Playoffs</div>${r.po.map(m=>`<div class="row"><span>${m.l}: ${TM[m.a].s} ${m.ra} v ${TM[m.b].s} ${m.rb}</span><b>${TM[m.w].s}</b></div>`).join('')}
+  <div class="stamp" style="margin:14px auto;display:block;font-size:30px;color:var(--gold);border-color:var(--gold);animation:none">🏆 ${TM[r.champ].n}<small>${oc(r.champ)}</small></div>`);confetti([TM[r.champ].c1,TM[r.champ].c2,'#f2b632'])}
+/* ---- report card ---- */
+function awards(){const L=[];V.teams.forEach(t=>t.sq.forEach(([i,paid])=>L.push({i,p:P[i],paid,t:t.id,q:P[i].q+((V.form&&V.form[i])||0)})));if(!L.length)return null;
+  const exp=x=>(x.q-60)/12,d=x=>exp(x)-x.paid,mx=(f)=>L.reduce((a,b)=>f(b)>f(a)?b:a);
+  return{exp:mx(x=>x.paid),buy:mx(d),over:mx(x=>-d(x)),steal:L.filter(x=>x.q>=80).reduce((a,b)=>!a||b.paid<a.paid?b:a,null),spender:V.teams.reduce((a,b)=>b.purse<a.purse?b:a)}}
+function reportCard(){const a=awards();if(!a)return toast('No players were sold');const f=x=>x?`<b>${esc(x.p.n)}</b> (${TM[x.t].s}, ${cr(x.paid)}, rated ${x.q})`:'none';
+  modal(`<h2>Auction report card</h2><div class="rc"><div>💎 Best buy<br>${f(a.buy)}</div><div>🧾 Biggest overpay<br>${f(a.over)}</div><div>🕵 Steal of the auction (rated 80+)<br>${f(a.steal)}</div><div>💰 Most expensive<br>${f(a.exp)}</div><div>🏦 Biggest spender<br><b>${TM[a.spender.id].n}</b> (${cr(a.spender.purse)} left)</div><div>🙋 Unsold<br><b>${V.un.length}</b> players</div></div>`)}
+/* ---- share image (PNG) ---- */
+function shareImg(){const r=V.teams.map(t=>({t,s:perf(tObj(t)).total})).sort((a,b)=>b.s-a.s),a=awards(),c=document.createElement('canvas');c.width=1080;c.height=1350;const g=c.getContext('2d');
+  const bg=g.createLinearGradient(0,0,0,1350);bg.addColorStop(0,'#16264a');bg.addColorStop(1,'#0b1220');g.fillStyle=bg;g.fillRect(0,0,1080,1350);
+  g.fillStyle='#f2b632';g.font='bold 72px Georgia';g.fillText('🏏 IPL AUCTION',60,120);g.fillStyle='#8d9ab5';g.font='32px sans-serif';g.fillText('Room '+V.code+' • '+new Date().toLocaleDateString(),60,170);
+  r.slice(0,6).forEach((x,k)=>{const y=260+k*120;g.fillStyle='#131d33';g.fillRect(50,y-50,980,100);g.fillStyle=TM[x.t.id].c1;g.fillRect(50,y-50,14,100);g.fillStyle='#f4efe0';g.font='bold 40px sans-serif';g.fillText((k+1)+'. '+TM[x.t.id].n,90,y-6);g.fillStyle='#8d9ab5';g.font='28px sans-serif';g.fillText(x.t.owner+' • '+x.t.sq.length+' players • '+cr(x.t.purse)+' left',90,y+34);g.fillStyle='#f2b632';g.font='bold 54px Georgia';g.textAlign='right';g.fillText(String(x.s),1000,y+14);g.textAlign='left'});
+  if(a){g.fillStyle='#f2b632';g.font='bold 40px sans-serif';g.fillText('Highlights',60,1030);g.fillStyle='#f4efe0';g.font='30px sans-serif';
+    [['Best buy: '+a.buy.p.n+' ('+TM[a.buy.t].s+', '+cr(a.buy.paid)+')'],['Biggest overpay: '+a.over.p.n+' ('+TM[a.over.t].s+', '+cr(a.over.paid)+')'],['Most expensive: '+a.exp.p.n+' ('+cr(a.exp.paid)+')']].forEach((l,k)=>g.fillText(l[0],60,1090+k*60))}
+  g.fillStyle='#8d9ab5';g.font='26px sans-serif';g.fillText('Scores out of 100: best XI, batting, bowling, balance, bench, stars',60,1300);
+  c.toBlob(async b=>{const f=new File([b],'ipl-auction-'+V.code+'.png',{type:'image/png'});try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'My IPL auction'});return}}catch(e){if(e&&e.name==='AbortError')return}
+    const u=document.createElement('a');u.href=URL.createObjectURL(b);u.download=f.name;u.click()})}
+/* ---- history and leaderboard (from this server's saved auctions) ---- */
+async function openHist(){let d;try{d=await(await fetch('/history')).json()}catch(e){return toast('No connection to the server.')}
+  const H=(d.h||[]).slice().reverse(),won={},played={},rows=[];
+  H.forEach(e=>{const rk=e.teams.map(t=>({t,s:perf({...TM[t.id],purse:t.purse,xi:null,sq:t.sq.map(([i,paid])=>({...P[i],id:i,paid,q:P[i].q+((e.form&&e.form[i])||0)}))}).total})).sort((a,b)=>b.s-a.s);
+    rk.forEach(x=>{played[x.t.owner]=(played[x.t.owner]||0)+1});if(rk[0])won[rk[0].t.owner]=(won[rk[0].t.owner]||0)+1;rows.push({e,rk})});
+  const lb=Object.keys(played).sort((a,b)=>(won[b]||0)-(won[a]||0)||played[a]-played[b]);
+  modal('<h2>History</h2>'+(!rows.length?'<p class="s">No finished auctions on this server yet.</p>':'<div class="sh">Leaderboard (auction wins)</div>'+lb.map(n=>`<div class="row"><span>${esc(n)}</span><b>${won[n]||0} / ${played[n]}</b></div>`).join('')+'<div class="sh">Recent auctions</div>'+rows.slice(0,12).map(({e,rk})=>`<div class="row"><span>${new Date(e.at).toLocaleDateString()} • ${e.code}</span><b>${TM[rk[0].t.id].s} (${esc(rk[0].t.owner)}) ${rk[0].s}</b></div>`).join('')))}
 </script>
 </body>
 </html>

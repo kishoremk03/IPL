@@ -1,0 +1,17 @@
+# Optional: Render "Blueprint". The free plan works, but its disk is wiped on every restart/sleep.
+# To keep rooms through restarts, use a paid plan, uncomment the disk block and set DATA_DIR.
+services:
+  - type: web
+    name: ipl-auction
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    # envVars:
+    #   - key: DATA_DIR
+    #     value: /data
+    # disk:
+    #   name: rooms
+    #   mountPath: /data
+    #   sizeGB: 1
