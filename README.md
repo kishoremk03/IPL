@@ -1,4 +1,4 @@
-# IPL Auction - Multiplayer (v5)
+# IPL Auction - Multiplayer (v6.0)
 
 Live IPL-style auction for friends. One person creates a room, everyone else joins with the 4-letter code on their own phone. No packages to install.
 
