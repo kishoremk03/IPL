@@ -40,3 +40,8 @@
 - **Languages (#25):** English only.
 - **Colour-blind patterns:** only the high-contrast text option exists.
 - **Rename team owner:** not built (remove + rejoin with a new name works).
+
+## v6.4 (storyboard pass, auction page untouched)
+- Final screen: **Return to Home** (everyone) and **Close Game** (host only, asks to confirm, ends the room for all players).
+- Home: **Join with invite link** (paste the full link or just the 4-letter code).
+- Server: new host-only `close` action (finished auction or lobby); covered by 3 new smoke checks.

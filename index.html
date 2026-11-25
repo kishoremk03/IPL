@@ -831,7 +831,9 @@ body.tv #tro .tw-h{font-size:60px}body.tv #tro .tw-teams,body.tv #tro .tw-stage{
    <button class="btn" id="mk">CREATE ROOM</button></div>
   <div class="card5 jn5"><h3>🎟 JOIN A ROOM</h3><p class="s">Enter the code your host shared</p>
    <input class="tx" id="cd" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off">
-   <button class="btn jb" id="jn">JOIN ROOM</button></div>
+   <button class="btn jb" id="jn">JOIN ROOM</button>
+   <input class="tx" id="ivl" placeholder="or paste an invite link" autocomplete="off" style="margin-top:8px">
+   <button class="btn g" id="jl" style="width:100%;margin-top:6px">🔗 JOIN WITH INVITE LINK</button></div>
   <button class="btn g" id="rs">💾 Restore a saved room (backup file)</button>
   <input type="file" id="rf" accept=".json,application/json" hidden>
   <p class="s" style="text-align:center">The host can download a backup during or after an auction and restore it later.</p>
@@ -969,7 +971,7 @@ const call=async req=>{let r;try{r=await(req.a==='meta'?fetch('/meta'):fetch('/a
   const o=await r.json();if(o.err)throw new Error(o.err);return o};
 function toast(m,ok){const t=$('toast');t.className=ok?'ok':'';t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',2800)}
 function apply(o){off=o.now-Date.now();if(o.same)return;if(V&&o.seq<V.seq)return;if(V&&o.seq===V.seq&&o.code===V.code&&o.phase===V.phase&&o.you&&V.you&&o.you.team===V.you.team&&o.you.isHost===V.you.isHost){V=o;if(o.you&&!es)connect();return}const prev=V;V=o;if(o.you){ME.pid=o.you.pid;ME.code=o.code;try{localStorage.setItem('iplmp',JSON.stringify(ME))}catch(e){}}if(o.you&&!es)connect();render(prev)}
-async function act(a,x){inflight++;try{apply(await call({a,code:ME.code,pid:ME.pid,...x}));return true}catch(e){toast(e.message);const c=$('ctl');if(c)c._h=null;if(V&&V.phase==='auction'){try{render(V)}catch(x){}}return false}finally{inflight--}}
+async function act(a,x){inflight++;try{const o=await call({a,code:ME.code,pid:ME.pid,...x});if(o&&o.closed){try{localStorage.removeItem('iplmp')}catch(e){}location.href=location.pathname;return true}apply(o);return true}catch(e){toast(e.message);const c=$('ctl');if(c)c._h=null;if(V&&V.phase==='auction'){try{render(V)}catch(x){}}return false}finally{inflight--}}
 /* live updates: the server pushes every change, so bids appear on all phones at once */
 let es=null;
 function connect(){if(es)es.close();es=new EventSource('/events?code='+encodeURIComponent(ME.code)+'&pid='+encodeURIComponent(ME.pid));es.onopen=()=>{$('rcn').hidden=true};es.onerror=()=>{$('rcn').hidden=false};
@@ -979,7 +981,7 @@ const pollNow=()=>{if(ME.pid&&(!es||es.readyState===2))connect()};
 
 async function enter(a){const name=$('nm').value.trim(),code=$('cd').value.trim().toUpperCase();$('herr').textContent='';
   try{if(!P.length)P=(await call({a:'meta'})).P;ME.name=name;apply(await call({a,name,code,pid:ME.code===code?ME.pid:''}))}catch(e){$('herr').textContent=e.message}}
-$('mk').onclick=()=>enter('create');$('jn').onclick=()=>enter('join');
+$('mk').onclick=()=>enter('create');$('jn').onclick=()=>enter('join');$('jl').onclick=()=>{const v=$('ivl').value.trim();let c='';try{c=new URL(v).searchParams.get('room')||''}catch(e){}if(!c){const m=v.match(/room=([A-Za-z]{4})/)||v.match(/^([A-Za-z]{4})$/);c=m?m[1]:''}if(!c){$('herr').textContent='That does not look like an invite link.';return}$('cd').value=c.toUpperCase().slice(0,4);enter('join')};
 $('leave').onclick=()=>{try{localStorage.removeItem('iplmp')}catch(e){}location.reload()};
 const QS=new URLSearchParams(location.search);if(QS.get('room'))$('cd').value=QS.get('room').toUpperCase().slice(0,4);
 (async()=>{if(QS.get('stream')){try{document.body.classList.add('stream');P=(await call({a:'meta'})).P;ME.name='Stream';apply(await call({a:'join',name:'Stream',code:QS.get('stream').toUpperCase(),pid:''}));return}catch(e){document.body.classList.remove('stream');$('herr').textContent=e.message}}
@@ -1213,10 +1215,13 @@ $('react').onclick=e=>{const b=e.target.closest('[data-q]');if(b)act('chat',{tex
 function exportCSV(){const rows=[['Team','Owner','Player','Role','Country','Price (Cr)']];V.teams.forEach(t=>t.sq.forEach(([i,pd])=>rows.push([TM[t.id].n,t.owner,P[i].n,P[i].r,P[i].c,pd])));
   const csv=rows.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')).join('\n'),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='ipl-auction-'+V.code+'.csv';a.click()}
 
+function goHome(){try{localStorage.removeItem('iplmp')}catch(e){}location.href=location.pathname}
+function closeGame(){if(confirm('Close the game for everyone? Download the CSV or a backup first if you want to keep it.'))act('close',{})}
 function ending(){const r=V.teams.map(t=>{const o=tObj(t);return{t,o,s:perf(o).total}}).sort((a,b)=>b.s-a.s);$('lot').textContent='';
   $('end').innerHTML=`<h2>Auction complete</h2><p class="s">Ranked out of 100 on best XI, batting, bowling, balance, bench and star power. Tap a team for its squad.</p>`+
   r.map((x,k)=>`<button class="lb" data-id="${x.t.id}"><span style="font:900 20px Georgia">${k+1}</span>${crest(TM[x.t.id],44)}<b>${TM[x.t.id].n}${x.t.id===V.you.team?' ★':''}<br><small style="color:var(--mute)">${esc(x.t.owner)} • ${x.t.sq.length} players • ${cr(x.t.purse)} left</small></b><span style="font:900 22px Georgia;color:var(--gold)">${x.s}</span></button>`).join('')+
   `<p class="s">${V.un.length} players stayed unsold, even after the accelerated round. Tap Sets (top right) to see every set and player.</p><p><button class="btn" onclick="exportCSV()">Download results (CSV)</button> ${V.you.isHost?'<button class="btn g" onclick="backup()">💾 Backup room</button>':''} <button class="btn g" onclick="$('leave').click()">New game</button></p>
+  <div class="row2"><button class="btn g" onclick="goHome()">🏠 Return to Home</button>${V.you.isHost?'<button class="btn g" onclick="closeGame()">✖ Close Game</button>':''}</div>
   <div class="row2"><button class="btn" onclick="simSeason()">🏏 Simulate the season</button><button class="btn g" onclick="openXI()">📋 My playing XI</button></div>
   <div class="row2"><button class="btn g" onclick="reportCard()">📊 Report card</button><button class="btn g" onclick="shareImg()">🖼 Share image</button><button class="btn g" onclick="openHist()">🏆 History</button></div>`;
   if(ovKey!=='end'){ovKey='end';confetti([TM[r[0].t.id].c1,TM[r[0].t.id].c2,'#f2b632'])}}

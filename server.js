@@ -437,6 +437,13 @@ function handle(r) {
   const s = rooms.get(code);
   if (!s) throw new Error('Room not found or expired.');
   if (!s.players[r.pid]) throw new Error('Session expired. Please rejoin.');
+  if (r.a === 'close') {                                   // host closes the whole game after it has finished (or from the lobby)
+    if (r.pid !== s.host) throw new Error('Host only.');
+    if (!['done', 'lobby'].includes(s.phase)) throw new Error('You can close the game when the auction is finished.');
+    for (const c of [...s.clients]) { try { c.res.write('data: ' + JSON.stringify({ err: 'The host closed the game.' }) + '\n\n'); c.res.end(); } catch (e) { /* gone */ } }
+    s.clients.clear(); rooms.delete(code); persist();
+    return { closed: 1 };
+  }
   const moved = tick(s);
   try { act(s, r); }
   catch (e) { if (moved) broadcast(s); throw e; }
