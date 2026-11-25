@@ -120,4 +120,8 @@ async function minSquadTest() {
   x = await call({ a: 'xi', code, pid: pa, ids, cap: ids[3], vc: ids[1] });
   if (!x.err) ok(JSON.stringify(x.xi.mi) === JSON.stringify(ids) && x.xc.mi.c === ids[3] && x.xc.mi.v === ids[1], 'batting order and captain are saved exactly as given');
   else ok(/overseas/.test(x.err), 'XI rejected only for the overseas rule: ' + x.err);
+  // close game: only the host, only when finished; room disappears
+  x = await call({ a: 'close', code, pid: pb }); ok(!!x.err, 'non-host cannot close the game');
+  x = await call({ a: 'close', code, pid: pa }); ok(x.closed === 1, 'host closes the finished game');
+  x = await call({ a: 'join', name: 'Late', code }); ok(!!x.err, 'closed room can no longer be joined');
 }
