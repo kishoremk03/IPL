@@ -757,6 +757,63 @@ body .bidbox .bp5{position:absolute;left:50%;bottom:-14px;transform:translateX(-
 body .bidbox .bp5 b{color:#ffd75e}
 @media(max-width:340px){body .bidbox{margin-left:14%!important;margin-right:14%!important}}
 @media(prefers-reduced-motion:reduce){.face.v9::after,.sh9.t1::after,.bidbox::before,.bidbox::after{animation:none!important}}
+/* ===== v9: Pause + Trade always visible on the auction screen ===== */
+#game #trrow{order:7;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;margin:2px 2px 0}
+#game #trrow[hidden]{display:none}
+#trrow .btn{height:38px;min-width:0;padding:0 8px;border-radius:13px;font:700 clamp(12.5px,3.7vw,15px) var(--hd);letter-spacing:1.2px;text-transform:uppercase;color:#ffe58a;white-space:nowrap;
+ background:linear-gradient(180deg,#22327e,#0d1640 70%,#080e2c);border:1.5px solid transparent;
+ background:linear-gradient(180deg,#22327e,#0d1640 70%,#080e2c) padding-box,linear-gradient(160deg,#fff3b0,#d99a1c 45%,#fff0a0) border-box;
+ box-shadow:0 5px 14px #0009,0 0 14px #f6c45322,inset 0 1px 0 #ffffff26;display:flex;align-items:center;justify-content:center;gap:4px}
+#trrow .btn:active:not(:disabled){transform:scale(.97)}
+#trrow #pzbtn.rs{color:#1a1000;background:linear-gradient(180deg,#fff0a0,#f6b82a 60%,#c98512) padding-box,linear-gradient(160deg,#fff3b0,#d99a1c) border-box;animation:v9rs 1.4s ease-in-out infinite}
+@keyframes v9rs{50%{box-shadow:0 5px 14px #0009,0 0 22px #f6c453cc}}
+#trrow .btn:disabled{opacity:.55}
+#trrow #trbtn .badge{position:static;display:inline-block;margin-left:4px;padding:0 7px;line-height:18px;border-radius:10px;background:var(--bad);color:#fff;font:700 12px var(--hd);letter-spacing:0}
+@media(prefers-reduced-motion:reduce){#trrow #pzbtn.rs{animation:none}}
+/* ===== v9: cinematic player-swap animation (plays on every device) ===== */
+#cf{z-index:310!important}
+#tro{gap:12px;padding:14px 14px 18px;background:radial-gradient(70% 55% at 0% 38%,color-mix(in srgb,var(--a,#f6c453) 52%,transparent),transparent 70%),radial-gradient(70% 55% at 100% 38%,color-mix(in srgb,var(--b,#5b3df5) 52%,transparent),transparent 70%),radial-gradient(circle at 50% 40%,#0b1330f2,#02050bfa);overflow:hidden}
+#tro .tw-h{font:italic 800 clamp(24px,8vw,42px)/1 var(--hd,Georgia);letter-spacing:3px;text-transform:uppercase;background:linear-gradient(180deg,#fff6c2,#ffd75e 45%,#d9901a);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 3px 0 #000a) drop-shadow(0 0 16px #f6c45377);animation:twh .7s cubic-bezier(.2,1.5,.4,1) both}
+@keyframes twh{from{transform:translateY(-50px) scale(.6);opacity:0}}
+#tro .tw-teams{display:flex;align-items:center;justify-content:center;gap:10px;width:min(520px,100%)}
+#tro .tw-t{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 6px;border-radius:16px;border:2px solid var(--c);background:linear-gradient(160deg,color-mix(in srgb,var(--c) 42%,#0b1220),#0b1220);box-shadow:0 0 26px color-mix(in srgb,var(--c) 60%,transparent);animation:twtl .7s .25s cubic-bezier(.2,1.2,.4,1) both}
+#tro .tw-t.r{animation-name:twtr}
+@keyframes twtl{from{transform:translateX(-120%);opacity:0}}@keyframes twtr{from{transform:translateX(120%);opacity:0}}
+#tro .tw-t b{font:800 20px var(--hd,Georgia);letter-spacing:2px;color:#fff}#tro .tw-t small{font-size:11px;color:#c3cde6;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#tro .tw-vs{font-size:28px;color:#ffd75e;text-shadow:0 0 14px #f6c453;animation:twsp 1.4s .7s ease-in-out both}
+@keyframes twsp{0%{transform:rotate(0) scale(.4);opacity:0}30%{opacity:1}100%{transform:rotate(360deg) scale(1)}}
+#tro .tw-stage{margin-top:10px;position:relative;display:grid;grid-template-columns:1fr 1fr;gap:20px;width:min(520px,100%);align-items:start;perspective:900px}
+#tro .tw-col{display:flex;flex-direction:column;gap:8px;min-width:0;position:relative}#tro .tw-col.l{z-index:2}
+#tro .tw-c{position:relative;border-radius:16px;overflow:hidden;color:#fff;text-align:left;border:2.5px solid transparent;
+ background:linear-gradient(180deg,#171f55,#0a0f30) padding-box,linear-gradient(135deg,#fff3b0,#f2b632 30%,#8a5a0a 55%,#ffe58a 80%,#f2b632) border-box;
+ box-shadow:0 10px 24px #000b,0 0 22px color-mix(in srgb,var(--fc) 55%,transparent);
+ animation:twin .55s calc(.9s + var(--k)*.22s) cubic-bezier(.2,1.3,.4,1) both,twfly 1.5s calc(2.3s + var(--k)*.15s) cubic-bezier(.6,0,.25,1) forwards,twglow .9s calc(3.7s + var(--k)*.15s) ease-out both}
+@keyframes twin{from{transform:scale(.3) translateY(30px);opacity:0}}
+@keyframes twfly{0%{transform:translate(0,0) scale(1) rotateY(0)}48%{transform:translate(calc(var(--dir)*(54% + 10px)),calc(var(--dir)*-22px)) scale(1.14) rotateY(calc(var(--dir)*-16deg))}100%{transform:translate(calc(var(--dir)*(100% + 20px)),0) scale(1) rotateY(0)}}
+@keyframes twglow{0%{box-shadow:0 10px 24px #000b,0 0 60px var(--tc)}100%{box-shadow:0 10px 24px #000b,0 0 22px color-mix(in srgb,var(--tc) 55%,transparent)}}
+#tro .tw-c .ph{position:relative;height:clamp(92px,27vw,132px);overflow:hidden;background:radial-gradient(70% 70% at 50% 35%,color-mix(in srgb,var(--fc) 80%,#fff 8%),transparent),linear-gradient(160deg,color-mix(in srgb,var(--fc) 60%,#0a0d30),#0a0d30)}
+#tro .tw-c .ph img,#tro .tw-c .ph svg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 10%}
+#tro .tw-c .rtg{position:absolute;top:5px;right:5px;z-index:2;min-width:30px;padding:2px 6px;border-radius:9px;text-align:center;font:800 16px/1.1 var(--hd,Georgia);color:#2a1700;background:linear-gradient(180deg,#fff3b0,#f2b632);box-shadow:0 2px 6px #000a}
+#tro .tw-c .in{padding:6px 8px 3px;line-height:1.1}
+#tro .tw-c .in b{display:block;font:italic 800 15px/1.05 var(--hd,Georgia);text-transform:uppercase;letter-spacing:.3px;color:#ffe58a;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+#tro .tw-c .in small{font:600 10.5px var(--hd,Georgia);letter-spacing:.5px;color:#aebbe8;text-transform:uppercase}
+#tro .tw-c .ow{display:grid;grid-template-rows:25px;margin:3px 6px 7px;border-radius:9px;background:#05081f;border:1px solid #fff2;height:25px;overflow:hidden}
+#tro .tw-c .ow span{grid-area:1/1;height:25px;min-height:0;display:flex;align-items:center;justify-content:center;gap:5px;font:700 12px var(--hd,Georgia);letter-spacing:.8px}
+#tro .tw-c .ow .wf{color:#c9d4ff;animation:twout .3s calc(3.1s + var(--k)*.15s) both}
+#tro .tw-c .ow .wt{color:#3ddc97;opacity:0;animation:twinn .35s calc(3.3s + var(--k)*.15s) both}
+#tro .tw-c .ow img,#tro .tw-c .ow svg{width:18px;height:18px;margin:0!important}
+#tro .tw-c .ow i{display:inline;width:auto;height:auto;margin:0;padding:0;background:none;font-style:normal}
+@keyframes twout{to{opacity:0;transform:translateY(-8px)}}@keyframes twinn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+#tro .tw-c.cash{display:flex;flex-direction:column;align-items:center;padding-top:10px;background:linear-gradient(180deg,#0f3d2a,#06180f) padding-box,linear-gradient(135deg,#7dffc4,#1fa86a 50%,#7dffc4) border-box}
+#tro .tw-c.cash .cx{font-size:30px}#tro .tw-c.cash b{font:800 22px var(--hd,Georgia);color:#3ddc97}#tro .tw-c.cash small{font:700 10px var(--hd,Georgia);letter-spacing:2px;color:#9fe9c4}#tro .tw-c.cash .ow{align-self:stretch}
+#tro .tw-ring{position:absolute;left:50%;top:38%;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;border:3px solid #ffd75e;box-shadow:0 0 30px #f6c453,inset 0 0 20px #f6c45366;opacity:0;pointer-events:none;z-index:4;animation:twrg .9s 2.95s ease-out both}
+@keyframes twrg{0%{transform:scale(.2);opacity:1}100%{transform:scale(4.2);opacity:0}}
+#tro .tw-done{font:900 clamp(22px,7vw,34px) var(--hd,Georgia);letter-spacing:4px;color:#3ddc97;text-shadow:0 0 20px #3ddc9788;animation:trdn .6s 3.9s cubic-bezier(.2,1.6,.4,1) both}
+#tro .tw-sum{color:#b9c3d9;font-size:12.5px;text-align:center;max-width:520px;animation:trdn .6s 4.2s both}
+body.tv #tro .tw-h{font-size:60px}body.tv #tro .tw-teams,body.tv #tro .tw-stage{width:min(900px,92vw)}body.tv #tro .tw-c .in b{font-size:24px}body.tv #tro .tw-c .ph{height:min(26vh,240px)}body.tv #tro .tw-t b{font-size:30px}
+@media(prefers-reduced-motion:reduce){#tro *{animation-duration:.01s!important;animation-delay:0s!important}}
+#tro .tw-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%}
+#tro .tw-stage.dense .tw-c .ph{height:66px}#tro .tw-stage.dense .tw-c .in small{display:none}#tro .tw-stage.dense{gap:16px}
 </style>
 </head>
 <body>
@@ -1016,20 +1073,26 @@ let seenTr=new Set(),trQ=[],trBusy=false,trT=0;
 function tradeAnim(){const l=V&&V.lt;if(!l||seenTr.has(l.n))return;seenTr.add(l.n);
   if(Date.now()+off-l.at>12000)return;       // joined late or reloaded: do not replay an old trade
   trQ.push(l);if(!trBusy)trNext()}
-function trCard(i,k){const p=P[i];return `<div class="trp" style="--k:${k}"><span class="pf">${face(p,44)}</span><div><b>${esc(p.n)}</b><small>${p.r}${p.bt?' • '+BTN[p.bt]:''} • ${p.c}</small></div><em>${p.q}</em></div>`}
-function trSide(id,list,cash,k0,cls){const t=TM[id],o=V.teams.find(x=>x.id===id);
-  return `<div class="trc ${cls}" style="--c:${t.c1}"><div class="trt">${crest(t,52)}<b>${t.s}</b><small>${esc(o?o.owner:'')}</small></div>`+
-    list.map((i,k)=>trCard(i,k0+k)).join('')+(cash>0?`<div class="trk" style="--k:${k0+list.length}">💰 ${cr(cash)} purse</div>`:'')+'</div>'}
+function twCard(i,k,ft,tt,dir){const p=P[i];
+  return `<div class="tw-c" style="--k:${k};--dir:${dir};--fc:${ft.c1};--tc:${tt.c1}"><div class="ph">${face(p,220)}<span class="rtg">${p.q}</span></div><div class="in"><b>${esc(p.n)}</b><small>${p.r}${p.bt?' • '+BTN[p.bt]:''} • ${p.c}</small></div><div class="ow"><span class="wf">${crest(ft,20)}<i>${ft.s}</i></span><span class="wt">${crest(tt,20)}<i>NOW ${tt.s}</i></span></div></div>`}
+function twCash(amt,k,ft,tt,dir){
+  return `<div class="tw-c cash" style="--k:${k};--dir:${dir};--fc:${ft.c1};--tc:${tt.c1}"><div class="cx">💰</div><b>${cr(amt)}</b><small>PURSE</small><div class="ow"><span class="wf">${crest(ft,20)}<i>${ft.s}</i></span><span class="wt">${crest(tt,20)}<i>NOW ${tt.s}</i></span></div></div>`}
+function twCol(list,cash,ft,tt,dir){return `<div class="tw-col ${dir>0?'l':'r'}">`+list.map((i,k)=>twCard(i,k,ft,tt,dir)).join('')+(cash>0?twCash(cash,list.length,ft,tt,dir):'')+'</div>'}
+function twTeam(t,o,cls){return `<div class="tw-t ${cls}" style="--c:${t.c1}">${crest(t,46)}<b>${t.s}</b><small>${esc(o?o.owner:'')}</small></div>`}
 function trNext(){const l=trQ.shift();if(!l){trBusy=false;return}
   if(!TM[l.from]||!TM[l.to]){return trNext()}
-  trBusy=true;const o=$('tro'),a=TM[l.from],b=TM[l.to];
-  const net=(l.gc||0)-(l.rc||0);
+  trBusy=true;const o=$('tro'),a=TM[l.from],b=TM[l.to],oa=V.teams.find(x=>x.id===l.from),ob=V.teams.find(x=>x.id===l.to);
   const nm=x=>x.map(i=>P[i].n).join(' & ')||'purse only';
-  o.innerHTML=`<div class="trh">🔄 Trade done!</div><div class="trm">${trSide(l.from,l.gp,l.gc,0,'l')}<div class="trx" aria-hidden="true">⇄</div>${trSide(l.to,l.rp,l.rc,0,'r')}</div><div class="trd">DEAL DONE ✓</div><div class="trs">${a.s} sent ${esc(nm(l.gp))}${l.gc?' + '+cr(l.gc):''} to ${b.s} for ${esc(nm(l.rp))}${l.rc?' + '+cr(l.rc):''}. Tap to skip.</div>`;
+  o.style.setProperty('--a',a.c1);o.style.setProperty('--b',b.c1);
+  const dense=Math.max(l.gp.length+(l.gc>0?1:0),l.rp.length+(l.rc>0?1:0))>=3;
+  o.innerHTML=`<div class="tw-wrap"><div class="tw-h">🔄 Trade done!</div><div class="tw-teams">${twTeam(a,oa,'l')}<div class="tw-vs" aria-hidden="true">⇄</div>${twTeam(b,ob,'r')}</div><div class="tw-stage${dense?' dense':''}"><div class="tw-ring"></div>${twCol(l.gp,l.gc,a,b,1)}${twCol(l.rp,l.rc,b,a,-1)}</div><div class="tw-done">DEAL DONE ✓</div><div class="tw-sum">${a.s} sent ${esc(nm(l.gp))}${l.gc?' + '+cr(l.gc):''} to ${b.s} for ${esc(nm(l.rp))}${l.rc?' + '+cr(l.rc):''}. Tap to skip.</div></div>`;
   o.style.display='flex';SFX.lot();vib([60,40,60]);
-  const end=()=>{clearTimeout(trT);o.style.display='none';o.innerHTML='';setTimeout(trNext,300)};
-  o.onclick=end;trT=setTimeout(()=>{try{confetti([a.c1,b.c1,'#f2b632'])}catch(e){}SFX.sold();vib(120)},4300);
-  setTimeout(()=>{if(o.style.display==='flex'&&trBusy)trT=setTimeout(end,2600)},4400)}
+  {const w=o.firstChild,H=innerHeight-24;if(w.offsetHeight>H)w.style.zoom=Math.max(.5,H/w.offsetHeight)}   // shrink to fit small phones
+  let T=[];const end=()=>{T.forEach(clearTimeout);o.style.display='none';o.innerHTML='';setTimeout(trNext,300)};
+  o.onclick=end;
+  T.push(setTimeout(()=>SFX.bid(),2300));                                   // cards take off
+  T.push(setTimeout(()=>{try{confetti([a.c1,b.c1,'#f2b632','#fff3b0'])}catch(e){}SFX.sold();vib(120)},3800));   // landed
+  T.push(setTimeout(end,7600))}
 /* local countdown between polls */
 setInterval(()=>{if(!V||V.phase!=='auction')return;const left=Math.max(0,(V.endsAt-(V.paused?V.pausedAt:Date.now()+off))/1000);
   if(V.stage==='bid'){$('bar').style.width=Math.min(100,left/((V.bidMs||10000)/1000)*100)+'%';$('tl').textContent=(V.paused?'⏸ ':'')+left.toFixed(1)+'s';
@@ -1046,7 +1109,7 @@ const liveTr=()=>(V.trades||[]).filter(t=>Date.now()+off<t.exp);
 const pn=i=>esc(P[i].n);
 const side=(l,c)=>{const a=l.map(i=>pn(i)+' <small>('+P[i].r+')</small>');if(c>0)a.push('<b>'+cr(c)+' purse</b>');return a.length?a.join(' + '):'nothing'};
 function tradeHook(){const t=myT(),hd=V.hold,own=!!t||V.you.isHost;$('trrow').hidden=!own||V.phase!=='auction';$('trbtn').hidden=!t;
-  const pb=$('pzbtn');pb.hidden=!own;
+  const pb=$('pzbtn');pb.hidden=!own;pb.classList.toggle('rs',!!hd);
   if(hd){pb.textContent=hd.mine||V.you.isHost?'▶ Resume auction':'⏸ Paused by '+hd.name;pb.disabled=!(hd.mine||V.you.isHost)}
   else{pb.textContent='⏸ Pause';pb.disabled=V.paused}
   if(!t)return;
@@ -1425,7 +1488,7 @@ $$('nm').addEventListener('input',()=>{$$('av5').textContent=($$('nm').value.tri
 
 /* v6: move secondary controls into a sheet, fit the screen without scrolling */
 const sh=document.createElement('div');sh.id='sheet5';sh.innerHTML='<div class="sh5h"><span>MORE CONTROLS</span><button id="shx5">✕</button></div>';document.body.appendChild(sh);
-['cm','host','hw','abx','abn','need','stbrow','react','trrow','ctl','strip'].forEach(id=>{const e=$$(id);e&&sh.appendChild(e)});
+['cm','host','hw','abx','abn','need','stbrow','react','ctl','strip'].forEach(id=>{const e=$$(id);e&&sh.appendChild(e)});
 document.querySelectorAll('#v4 .row4,#v4 .tm10,#gi5').forEach(e=>sh.appendChild(e));
 const tpp=[...g.querySelectorAll('p.s')].find(x=>/Teams \(tap/.test(x.textContent));if(tpp)sh.insertBefore(tpp,$$('strip'));
 hd.querySelector('.hb').insertAdjacentHTML('afterbegin','<button class="btn g" id="mrb" title="More controls"></button>');
