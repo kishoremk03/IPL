@@ -19,8 +19,10 @@ let bad = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if
   await h.click('#go'); for (const p of [h, a, b]) await p.waitForSelector('#game:not([hidden])');
   ok(/₹/.test(await a.textContent('#amt')), 'auction screen shows the lot');
   ok((await a.textContent('#need')).includes('Needs'), 'squad-needs meter shows');
-  await a.click('.bb[data-amt]'); await W(400); ok((await b.textContent('#ldr')).includes('CSK'), 'bid shows on the other phone');
+  await a.click('#pb4'); await W(400); ok((await b.textContent('#ldr')).includes('CSK'), 'bid shows on the other phone');
+  await b.click('#ab4'); await W(200);
   await b.click('#jmp'); await W(400); ok((await a.textContent('#ldr')).includes('RCB'), 'jump bid works');
+  await a.click('#ab4'); await W(200);
   await a.fill('#abm', '6'); await a.click('#abs'); await W(500); ok((await a.textContent('#abn')).includes('Auto-bid is on'), 'auto-bid switches on');
   ok((await a.textContent('#ldr')).includes('CSK'), 'auto-bid takes the lead');
   await a.click('#stb'); ok((await a.textContent('#stb')).includes('Watching'), 'watchlist star toggles');
@@ -31,14 +33,14 @@ let bad = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if
   await h.evaluate(() => closeMd()); await h.click('#menub'); await h.click('[data-m=set]'); await h.check('#sBig'); ok(await h.evaluate(() => document.body.classList.contains('bigtap')), 'settings apply');
   await h.evaluate(() => closeMd());
   await a.screenshot({ path: '/tmp/phone-game.png' });
-  await a.click('.bb[data-amt]'); await W(300); await h.click('#sell'); await W(600);
+  await a.click('#pb4'); await W(300); await h.click('#sell'); await W(600);
   await h.click('#endA'); for (const p of [h, a]) await p.waitForSelector('#end:not([hidden])');
   await a.click('text=Simulate the season'); ok((await a.textContent('#mdb')).includes('Playoffs'), 'season simulator runs');
   const t1 = await a.textContent('#mdb'); await b.click('text=Simulate the season'); ok((await b.textContent('#mdb')) === t1, 'season result is identical on every phone');
   await a.evaluate(() => closeMd()); await a.click('text=My playing XI'); await W(200); ok((await a.textContent('#mdb')).includes('Playing XI'), 'XI picker opens');
   await a.evaluate(() => closeMd()); await a.click('text=Report card'); ok((await a.textContent('#mdb')).includes('Best buy'), 'report card shows awards');
   await a.evaluate(() => closeMd()); const [dl] = await Promise.all([a.waitForEvent('download', { timeout: 4000 }).catch(() => null), a.click('text=Share image')]); ok(!!dl, 'share image downloads a PNG');
-  await a.click('text=History'); await W(400); ok((await a.textContent('#mdb')).includes('History'), 'history opens');
+  await a.click('button:has-text("History")'); await W(400); ok((await a.textContent('#mdb')).includes('History'), 'history opens');
   ok(errs.length === 0, 'no JavaScript errors in any browser' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));
   await br.close(); srv.kill('SIGTERM'); await W(300); try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
   process.exit(bad ? 1 : 0);

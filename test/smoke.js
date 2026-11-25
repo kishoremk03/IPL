@@ -28,7 +28,7 @@ let srv;
   t = await call({ a: 'import', name: 'X', snap: { app: 'nope' } }); ok(!!t.err, 'bad backup is rejected');
   v = await call({ a: 'resume', code: r.code, pid: r.you.pid }); ok(!v.paused, 'host resumes the restored auction');
   srv.kill('SIGTERM'); await wait(300); srv = start(); await wait(700);
-  await features(); srv.kill('SIGTERM'); await wait(400); try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* temp folder, ignore */ }
+  await tradeTest(); await minSquadTest(); await features(); srv.kill('SIGTERM'); await wait(400); try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* temp folder, ignore */ }
 })();
 
 async function features() {
@@ -87,4 +87,37 @@ async function features() {
   srv.kill('SIGTERM'); await wait(300); srv = start(5); await wait(700);
   let n = 0; for (let g = 0; g < 9; g++) { const y = await call({ a: 'join', name: 'rl' + g, code: 'ZZZZ' }); if (y.err && /Too many/.test(y.err)) n++; }
   ok(n >= 3, 'rate limiter blocks request floods');
+}
+
+/* a finished trade must be sent to everyone (owners and spectators) so each phone can play the animation once */
+async function tradeTest() {
+  const a = await call({ a: 'create', name: 'Asha' }), code = a.code, pa = a.you.pid;
+  const pb = (await call({ a: 'join', name: 'Bala', code })).you.pid, pw = (await call({ a: 'join', name: 'Watcher', code })).you.pid;
+  await call({ a: 'claim', code, pid: pa, team: 'mi' }); await call({ a: 'claim', code, pid: pb, team: 'csk' });
+  let v = await call({ a: 'start', code, pid: pa }); v = await call({ a: 'bid', code, pid: pb, amt: v.base }); v = await call({ a: 'sell', code, pid: pa });
+  const csk = v.teams.find(t => t.id === 'csk'), pl = csk.sq[0][0];
+  ok(v.lt === null, 'no trade animation data before any trade');
+  v = await call({ a: 'tpropose', code, pid: pb, to: 'mi', gp: [pl], gc: 1, rp: [], rc: 0 }); ok(!v.err, 'CSK proposes a trade');
+  const id = v.trades[0].id;
+  v = await call({ a: 'taccept', code, pid: pa, id }); ok(!v.err && v.lt && v.lt.n === 1 && v.lt.from === 'csk' && v.lt.to === 'mi' && v.lt.gp[0] === pl && v.lt.gc === 1, 'accepted trade is described in the state (lt)');
+  const w = await call({ a: 'join', name: 'Watcher', code, pid: pw }); ok(w.lt && w.lt.n === 1 && !w.you.team, 'a spectator receives the same trade');
+  ok(w.teams.find(t => t.id === 'mi').sq.some(x => x[0] === pl), 'player moved to MI');
+}
+
+/* ending early must still leave every team with the minimum squad, and the XI keeps the batting order + captain */
+async function minSquadTest() {
+  const a = await call({ a: 'create', name: 'Asha' }), code = a.code, pa = a.you.pid;
+  const pb = (await call({ a: 'join', name: 'Bala', code })).you.pid;
+  await call({ a: 'claim', code, pid: pa, team: 'mi' }); await call({ a: 'claim', code, pid: pb, team: 'csk' });
+  let v = await call({ a: 'start', code, pid: pa });
+  ok(v.minsq === 18 && v.maxsq === 25, 'minimum squad is sent (18 of 25)');
+  v = await call({ a: 'end', code, pid: pa });
+  ok(v.phase === 'done' && v.teams.every(t => t.sq.length >= v.minsq), 'every team ends with at least the minimum squad');
+  ok(v.teams.every(t => t.os <= 8 && t.purse >= 0), 'auto-buy respects the overseas limit and the purse');
+  const sq = v.teams.find(t => t.id === 'mi').sq.map(x => x[0]), ids = sq.slice(0, 11).reverse();
+  let x = await call({ a: 'xi', code, pid: pa, ids, cap: ids[3], vc: ids[3] }); ok(!!x.err, 'captain and vice-captain must differ');
+  x = await call({ a: 'xi', code, pid: pa, ids, cap: sq[12], vc: ids[1] }); ok(!!x.err, 'captain must be inside the XI');
+  x = await call({ a: 'xi', code, pid: pa, ids, cap: ids[3], vc: ids[1] });
+  if (!x.err) ok(JSON.stringify(x.xi.mi) === JSON.stringify(ids) && x.xc.mi.c === ids[3] && x.xc.mi.v === ids[1], 'batting order and captain are saved exactly as given');
+  else ok(/overseas/.test(x.err), 'XI rejected only for the overseas rule: ' + x.err);
 }
