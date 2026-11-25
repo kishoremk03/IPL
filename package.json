@@ -1,6 +1,6 @@
 {
-  "name": "ipl-auction-3d",
-  "version": "4.0.0",
+  "name": "ipl-auction-v5",
+  "version": "5.0.0",
   "description": "Live multiplayer IPL-style auction for friends (no dependencies).",
   "main": "server.js",
   "scripts": {
