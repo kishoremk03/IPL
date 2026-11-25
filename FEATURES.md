@@ -25,6 +25,10 @@
 | 22 | Host controls: lock room, remove player, make someone host | Menu > Room controls |
 | 23 | Abuse guard: request-rate limit and room-creation limit per IP | server |
 | 24 | Accessibility: text size, larger tap targets, high-contrast text | Menu > Settings |
+| 26 | Trade animation: when a trade is accepted, every phone and the big screen plays the same swap animation (teams, player cards fly across, purse coin, confetti). Tap to skip. | automatic |
+| 27 | Player ratings re-checked: all 308 players re-rated 56 to 96 on one scale (role-neutral, recent T20/IPL form, IPL 2026 batting leaderboard for the top batters) | server.js DATA |
+| 28 | Minimum squad: every team must buy at least 72% of the squad size (18 of 25). Bids that would leave too little purse for the minimum are blocked, and any team still short at the end is topped up with the best cheap unsold players at half base price (auto-buy, logged) | automatic |
+| 29 | Playing XI rebuilt: batting order 1-11, every player has natural batting zone(s). Full rating in his natural slot, 94% / 86% / 78% / 70% as he moves further away. Captain (+3 max) and vice-captain (+1 max), live team rating, coach tips, Best XI / Best order buttons, tap-to-swap | My playing XI |
 | - | Backup / restore room, take over a team, host takeover, auto-save | v2 |
 
 ## Not done (be honest)

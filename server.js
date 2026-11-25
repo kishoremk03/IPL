@@ -13,6 +13,9 @@ const crypto = require('crypto');
 const TEAM_IDS = ['mi','csk','rcb','kkr','dc','pbks','rr','srh','gt','lsg'];
 const DEFSQ = 25, SQ_OPTS = [15, 18, 21, 25], PURSE = 100;
 const msq = s => s.maxsq || DEFSQ;
+const minsq = s => Math.max(11, Math.round(msq(s) * 0.72));   // every team must end with at least this many players: 25 -> 18, 21 -> 15, 18 -> 13, 15 -> 11
+const RESERVE = .25;                                         // purse a team must keep for each player it still has to buy (the cheapest base price)
+const reserveFor = (s, n) => Math.max(0, minsq(s) - n) * RESERVE;
 const osl = s => Math.floor(msq(s) / 3);      // overseas cap: 15 -> 5 (10 Indian), 18 -> 6 (12), 21 -> 7 (14), 25 -> 8 (17)
 const BID_MS = 10000, BUMP_MS = 10000, RES_MS = 3000, TRADE_TTL = 90000;
 const HOST_AWAY_MS = 45000;                            // host with no open connection for this long can be replaced by a team owner
@@ -25,316 +28,335 @@ const RTM_MS = 10000;
 const bidMs = s => s.acc ? ACC_BID_MS : (TIMERS[s.timer] || TIMERS.classic)[0];
 const bumpMs = s => { const b = s.acc ? ACC_BUMP_MS : (TIMERS[s.timer] || TIMERS.classic)[1]; return (s.nb || 0) >= 6 ? Math.max(4000, Math.round(b / 2)) : b; };   // bid war: after 6 bids the extension halves, so wars finish
 
-const DATA=`Tim David|BAT|AUS|1.0|82||rcb|16|1|1
-Venkatesh Iyer|AR|IND|1.0|79|M|rcb|16|1|1
-Virat Kohli|BAT|IND|2.0|95||rcb|16|1|1
-Bhuvneshwar Kumar|BOWL|IND|1.0|80|M|rcb|16|1|1
+const DATA=`Tim David|BAT|AUS|1.0|83||rcb|16|1|1
+Venkatesh Iyer|AR|IND|1.0|77|M|rcb|16|1|1
+Virat Kohli|BAT|IND|2.0|94||rcb|16|1|1
+Bhuvneshwar Kumar|BOWL|IND|1.0|82|M|rcb|16|1|1
 Devdutt Padikkal|BAT|IND|0.5|75||rcb|16|1|1
-Krunal Pandya|AR|IND|0.75|76|S|rcb|16|1|1
-Rasikh Salam|BOWL|IND|0.5|70|M|rcb|16|0|1
-Jitesh Sharma|WK|IND|0.5|74||rcb|16|1|1
-Romario Shepherd|AR|WI|0.75|76|F|rcb|16|0|1
-Rajat Patidar|BAT|IND|0.75|78||rcb|15|1|1
-Suyash Sharma|BOWL|IND|0.5|72|S|rcb|14|0|1
-Josh Hazlewood|BOWL|AUS|1.5|86|F|rcb|13|1|1
-Jordan Cox|WK|ENG|0.5|74||rcb|12|0|1
-Jacob Bethell|AR|ENG|0.75|77|S|rcb|11|0|1
-Mangesh Yadav|AR|IND|0.5|72|M|rcb|9|0|1
-Kanishk Chouhan|AR|IND|0.5|71|M|rcb|8|0|1
-Abhinandan Singh|BOWL|IND|0.25|67|M|rcb|7|0|1
-Jacob Duffy|BOWL|NZ|0.5|73|M|rcb|6|0|1
-Phil Salt|WK|ENG|1.5|85||rcb|6|1|1
-Swapnil Singh|AR|IND|0.5|69|S|rcb|6|0|1
-Vicky Kanhaiya Ostwal|BOWL|IND|0.25|65|S|rcb|5|0|1
+Krunal Pandya|AR|IND|0.75|79|S|rcb|16|1|1
+Rasikh Salam|BOWL|IND|0.5|72|M|rcb|16|0|1
+Jitesh Sharma|WK|IND|0.5|78||rcb|16|1|1
+Romario Shepherd|AR|WI|0.75|79|F|rcb|16|0|1
+Rajat Patidar|BAT|IND|0.75|84||rcb|15|1|1
+Suyash Sharma|BOWL|IND|0.5|74|S|rcb|14|0|1
+Josh Hazlewood|BOWL|AUS|1.5|87|F|rcb|13|1|1
+Jordan Cox|WK|ENG|0.5|70||rcb|12|0|1
+Jacob Bethell|AR|ENG|0.75|78|S|rcb|11|0|1
+Mangesh Yadav|AR|IND|0.5|68|M|rcb|9|0|1
+Kanishk Chouhan|AR|IND|0.5|62|M|rcb|8|0|1
+Abhinandan Singh|BOWL|IND|0.25|64|M|rcb|7|0|1
+Jacob Duffy|BOWL|NZ|0.5|76|M|rcb|6|0|1
+Phil Salt|WK|ENG|1.5|86||rcb|6|1|1
+Swapnil Singh|AR|IND|0.5|68|S|rcb|6|0|1
+Vicky Kanhaiya Ostwal|BOWL|IND|0.25|66|S|rcb|5|0|1
 Yash Dayal|BOWL|IND|0.5|73|M|rcb|0|1|1
-Satvik Deswal|BOWL|IND|0.25|60|M|rcb|0|0|1
-Vihaan Manoj Malhotra|AR|IND|0.25|63|M|rcb|0|0|1
-Nuwan Thushara|BOWL|SL|0.5|73|F|rcb|0|0|1
-Jos Buttler|WK|ENG|2.0|90||gt|17|1|1
+Satvik Deswal|BOWL|IND|0.25|58|M|rcb|0|0|1
+Vihaan Manoj Malhotra|AR|IND|0.25|58|M|rcb|0|0|1
+Nuwan Thushara|BOWL|SL|0.5|74|F|rcb|0|0|1
+Jos Buttler|WK|ENG|2.0|89||gt|17|1|1
 Jason Holder|AR|WI|0.75|76|M|gt|17|0|1
-Rashid Khan|BOWL|AFG|2.0|93|S|gt|17|1|1
-Glenn Phillips|AR|NZ|1.0|79|S|gt|17|0|1
+Rashid Khan|BOWL|AFG|2.0|92|S|gt|17|1|1
+Glenn Phillips|AR|NZ|1.0|80|S|gt|17|0|1
 Kagiso Rabada|BOWL|SA|1.5|87|F|gt|17|1|1
-Mohammed Siraj|BOWL|IND|1.5|87|F|gt|17|1|1
-Sai Sudharsan|BAT|IND|0.75|80||gt|17|1|1
-Washington Sundar|AR|IND|1.0|80|S|gt|17|1|1
+Mohammed Siraj|BOWL|IND|1.5|85|F|gt|17|1|1
+Sai Sudharsan|BAT|IND|0.75|90||gt|17|1|1
+Washington Sundar|AR|IND|1.0|78|S|gt|17|1|1
 Rahul Tewatia|AR|IND|0.5|74|S|gt|17|1|1
 Shubman Gill|BAT|IND|2.0|91||gt|16|1|1
-Anuj Rawat|WK|IND|0.5|67||gt|16|0|1
-Prasidh Krishna|BOWL|IND|1.0|79|F|gt|14|1|1
-Nishant Sindhu|AR|IND|0.5|73|S|gt|11|0|1
+Anuj Rawat|WK|IND|0.5|66||gt|16|0|1
+Prasidh Krishna|BOWL|IND|1.0|82|F|gt|14|1|1
+Nishant Sindhu|AR|IND|0.5|70|S|gt|11|0|1
 Arshad Khan|AR|IND|0.5|68|M|gt|10|0|1
-Kumar Kushagra|WK|IND|0.5|72||gt|10|0|1
-Manav Suthar|BOWL|IND|0.5|70|S|gt|10|0|1
-Shahrukh Khan|BAT|IND|0.5|73||gt|9|0|1
-Kulwant Khejroliya|BOWL|IND|0.5|68|M|gt|8|0|1
-Sai Kishore|BOWL|IND|0.75|77|S|gt|6|0|1
-Ashok Sharma|BOWL|IND|0.25|66|M|gt|6|0|1
-Jayant Yadav|BOWL|IND|0.5|68|S|gt|3|0|1
+Kumar Kushagra|WK|IND|0.5|70||gt|10|0|1
+Manav Suthar|BOWL|IND|0.5|66|S|gt|10|0|1
+Shahrukh Khan|BAT|IND|0.5|72||gt|9|0|1
+Kulwant Khejroliya|BOWL|IND|0.5|62|M|gt|8|0|1
+Sai Kishore|BOWL|IND|0.75|78|S|gt|6|0|1
+Ashok Sharma|BOWL|IND|0.25|64|M|gt|6|0|1
+Jayant Yadav|BOWL|IND|0.5|66|S|gt|3|0|1
 Tom Banton|BAT|ENG|0.5|72||gt|0|0|1
-Gurnoor Brar|BOWL|IND|0.25|60|M|gt|0|0|1
-Ishant Sharma|BOWL|IND|0.5|70|M|gt|0|0|1
+Gurnoor Brar|BOWL|IND|0.25|66|M|gt|0|0|1
+Ishant Sharma|BOWL|IND|0.5|72|M|gt|0|0|1
 Luke Wood|AR|ENG|0.5|74|F|gt|0|0|1
-Salil Arora|BAT|IND|0.5|72||srh|15|0|1
-Harsh Dubey|BOWL|IND|0.5|74|S|srh|15|0|1
+Salil Arora|BAT|IND|0.5|66||srh|15|0|1
+Harsh Dubey|BOWL|IND|0.5|72|S|srh|15|0|1
 Travis Head|BAT|AUS|2.0|90||srh|15|1|1
-Ishan Kishan|WK|IND|1.5|82||srh|15|1|1
+Ishan Kishan|WK|IND|1.5|85||srh|15|1|1
 Heinrich Klaasen|WK|SA|2.0|91||srh|15|1|1
-Shivang Kumar|BOWL|IND|0.5|74|S|srh|15|0|1
-Liam Livingstone|AR|ENG|1.5|82|S|srh|15|1|1
-Eshan Malinga|BOWL|SL|0.75|76|F|srh|15|0|1
-Harshal Patel|BOWL|IND|0.75|77|M|srh|15|0|1
-Abhishek Sharma|AR|IND|1.0|83|S|srh|15|1|1
-Aniket Verma|BAT|IND|0.75|77||srh|15|0|1
+Shivang Kumar|BOWL|IND|0.5|68|S|srh|15|0|1
+Liam Livingstone|AR|ENG|1.5|80|S|srh|15|1|1
+Eshan Malinga|BOWL|SL|0.75|74|F|srh|15|0|1
+Harshal Patel|BOWL|IND|0.75|80|M|srh|15|0|1
+Abhishek Sharma|AR|IND|1.0|91|S|srh|15|1|1
+Aniket Verma|BAT|IND|0.75|72||srh|15|0|1
 Nitish Kumar Reddy|AR|IND|0.75|78|M|srh|14|1|1
-Sakib Hussain|AR|IND|0.75|75|M|srh|13|0|1
-Ravichandran Smaran|BAT|IND|0.75|75||srh|13|0|1
-Praful Hinge|BOWL|IND|0.5|71|M|srh|12|0|1
-Pat Cummins|BOWL|AUS|2.0|91|F|srh|8|1|1
+Sakib Hussain|AR|IND|0.75|66|M|srh|13|0|1
+Ravichandran Smaran|BAT|IND|0.75|72||srh|13|0|1
+Praful Hinge|BOWL|IND|0.5|66|M|srh|12|0|1
+Pat Cummins|BOWL|AUS|2.0|88|F|srh|8|1|1
 Jaydev Unadkat|BOWL|IND|0.5|72|M|srh|4|0|1
-Shivam Mavi|BOWL|IND|0.25|63|F|srh|3|0|1
-David Payne|BOWL|ENG|0.25|63|M|srh|3|0|1
-Zeeshan Ansari|BOWL|IND|0.25|62|S|srh|2|0|1
-Dilshan Madushanka|BOWL|SL|0.5|72|F|srh|2|0|1
-Kamindu Mendis|AR|SL|0.5|74|S|srh|1|0|1
-Krains Bhaveshbhai Fuletra|BOWL|IND|0.25|60|M|srh|0|0|1
+Shivam Mavi|BOWL|IND|0.25|66|F|srh|3|0|1
+David Payne|BOWL|ENG|0.25|64|M|srh|3|0|1
+Zeeshan Ansari|BOWL|IND|0.25|68|S|srh|2|0|1
+Dilshan Madushanka|BOWL|SL|0.5|70|F|srh|2|0|1
+Kamindu Mendis|AR|SL|0.5|76|S|srh|1|0|1
+Krains Bhaveshbhai Fuletra|BOWL|IND|0.25|58|M|srh|0|0|1
 Brydon Carse|BOWL|ENG|0.75|76|F|srh|0|0|1
-Amit Kumar|BOWL|IND|0.25|60|M|srh|0|0|1
-Onkar Tarmale|BOWL|IND|0.25|60|M|srh|0|0|1
-Jofra Archer|BOWL|ENG|1.5|85|F|rr|16|1|1
+Amit Kumar|BOWL|IND|0.25|58|M|srh|0|0|1
+Onkar Tarmale|BOWL|IND|0.25|58|M|srh|0|0|1
+Jofra Archer|BOWL|ENG|1.5|87|F|rr|16|1|1
 Ravi Bishnoi|BOWL|IND|0.75|78|S|rr|16|1|1
-Donovan Ferreira|WK|SA|0.75|75||rr|16|0|1
+Donovan Ferreira|WK|SA|0.75|72||rr|16|0|1
 Yashasvi Jaiswal|BAT|IND|1.5|90||rr|16|1|1
-Dhruv Jurel|WK|IND|0.5|77||rr|16|1|1
-Brijesh Sharma|BOWL|IND|0.5|73|S|rr|16|0|1
-Vaibhav Suryavanshi|BAT|IND|0.5|74||rr|16|0|1
-Shubham Dubey|BAT|IND|0.75|77||rr|15|0|1
-Riyan Parag|BAT|IND|0.75|79||rr|15|1|1
-Ravindra Jadeja|AR|IND|2.0|89|S|rr|14|1|1
+Dhruv Jurel|WK|IND|0.5|82||rr|16|1|1
+Brijesh Sharma|BOWL|IND|0.5|66|S|rr|16|0|1
+Vaibhav Suryavanshi|BAT|IND|0.5|91||rr|16|0|1
+Shubham Dubey|BAT|IND|0.75|72||rr|15|0|1
+Riyan Parag|BAT|IND|0.75|78||rr|15|1|1
+Ravindra Jadeja|AR|IND|2.0|84|S|rr|14|1|1
 Nandre Burger|BOWL|SA|0.75|76|F|rr|13|0|1
 Tushar Deshpande|BOWL|IND|0.5|74|M|rr|13|0|1
-Ravi Singh|WK|IND|0.5|74||rr|12|0|1
-Shimron Hetmyer|BAT|WI|1.0|80||rr|10|1|1
-Lhuan-dre Pretorius|WK|SA|0.5|72||rr|10|0|1
-Yash Raj Punja|AR|IND|0.5|72|M|rr|10|0|1
-Dasun Shanaka|AR|SL|0.5|73|M|rr|8|0|1
-Sandeep Sharma|BOWL|IND|0.5|72|M|rr|8|0|1
-Sushant Mishra|BOWL|IND|0.25|67|M|rr|7|0|1
-Aman Rao Perala|BAT|IND|0.5|68||rr|5|0|1
-Adam Milne|BOWL|NZ|0.75|75|F|rr|3|0|1
-Yudhvir Singh Charak|BOWL|IND|0.25|61|M|rr|1|0|1
-Kyle Jamieson|BOWL|NZ|0.75|75|F|dc|2|0|1
-Kwena Maphaka|BOWL|SA|0.25|60|F|rr|0|0|1
-Vignesh Puthur|AR|IND|0.25|63|S|rr|0|0|1
-Kuldeep Sen|BOWL|IND|0.5|71|M|rr|0|0|1
-Priyansh Arya|BAT|IND|0.5|74||pbks|14|0|1
+Ravi Singh|WK|IND|0.5|66||rr|12|0|1
+Shimron Hetmyer|BAT|WI|1.0|78||rr|10|1|1
+Lhuan-dre Pretorius|WK|SA|0.5|70||rr|10|0|1
+Yash Raj Punja|AR|IND|0.5|62|M|rr|10|0|1
+Dasun Shanaka|AR|SL|0.5|70|M|rr|8|0|1
+Sandeep Sharma|BOWL|IND|0.5|76|M|rr|8|0|1
+Sushant Mishra|BOWL|IND|0.25|64|M|rr|7|0|1
+Aman Rao Perala|BAT|IND|0.5|62||rr|5|0|1
+Adam Milne|BOWL|NZ|0.75|76|F|rr|3|0|1
+Yudhvir Singh Charak|BOWL|IND|0.25|64|M|rr|1|0|1
+Kyle Jamieson|BOWL|NZ|0.75|74|F|dc|2|0|1
+Kwena Maphaka|BOWL|SA|0.25|74|F|rr|0|0|1
+Vignesh Puthur|AR|IND|0.25|68|S|rr|0|0|1
+Kuldeep Sen|BOWL|IND|0.5|66|M|rr|0|0|1
+Priyansh Arya|BAT|IND|0.5|78||pbks|14|0|1
 Xavier Bartlett|BOWL|AUS|0.5|74|F|pbks|14|0|1
-Harpreet Brar|BOWL|IND|0.5|72|S|pbks|14|0|1
-Yuzvendra Chahal|BOWL|IND|1.5|86|S|pbks|14|1|1
-Cooper Connolly|AR|AUS|0.75|77|S|pbks|14|0|1
-Shreyas Iyer|BAT|IND|2.0|86||pbks|14|1|1
-Suryansh Shedge|BAT|IND|0.75|76||pbks|14|0|1
-Arshdeep Singh|BOWL|IND|1.5|85|F|pbks|14|1|1
-Prabhsimran Singh|WK|IND|0.5|74||pbks|14|0|1
-Vishnu Vinod|WK|IND|0.75|76||pbks|14|0|1
-Marco Jansen|AR|SA|1.0|81|F|pbks|13|1|1
-Marcus Stoinis|AR|AUS|1.0|82|M|pbks|13|1|1
-Shashank Singh|AR|IND|0.5|76|M|pbks|12|1|1
-Vijaykumar Vyshak|BOWL|IND|0.5|74|M|pbks|12|0|1
+Harpreet Brar|BOWL|IND|0.5|70|S|pbks|14|0|1
+Yuzvendra Chahal|BOWL|IND|1.5|82|S|pbks|14|1|1
+Cooper Connolly|AR|AUS|0.75|80|S|pbks|14|0|1
+Shreyas Iyer|BAT|IND|2.0|89||pbks|14|1|1
+Suryansh Shedge|BAT|IND|0.75|70||pbks|14|0|1
+Arshdeep Singh|BOWL|IND|1.5|88|F|pbks|14|1|1
+Prabhsimran Singh|WK|IND|0.5|82||pbks|14|0|1
+Vishnu Vinod|WK|IND|0.75|70||pbks|14|0|1
+Marco Jansen|AR|SA|1.0|80|F|pbks|13|1|1
+Marcus Stoinis|AR|AUS|1.0|80|M|pbks|13|1|1
+Shashank Singh|AR|IND|0.5|78|M|pbks|12|1|1
+Vijaykumar Vyshak|BOWL|IND|0.5|72|M|pbks|12|0|1
 Nehal Wadhera|BAT|IND|0.5|74||pbks|9|1|1
-Praveen Dubey|BOWL|IND|0.25|67|S|pbks|7|0|1
-Yash Thakur|BOWL|IND|0.5|71|M|pbks|5|0|1
-Musheer Khan|AR|IND|0.25|67|S|pbks|4|0|1
-Lockie Ferguson|BOWL|NZ|1.0|79|F|pbks|3|1|1
+Praveen Dubey|BOWL|IND|0.25|64|S|pbks|7|0|1
+Yash Thakur|BOWL|IND|0.5|72|M|pbks|5|0|1
+Musheer Khan|AR|IND|0.25|66|S|pbks|4|0|1
+Lockie Ferguson|BOWL|NZ|1.0|78|F|pbks|3|1|1
 Azmatullah Omarzai|AR|AFG|0.75|76|M|pbks|3|0|1
 Mitchell Owen|AR|AUS|0.5|74|M|pbks|2|0|1
-Ben Dwarshuis|BOWL|AUS|0.25|61|M|pbks|1|0|1
-Pyla Avinash|BAT|IND|0.25|63||pbks|0|0|1
-Vishal Nishad|BOWL|IND|0.25|60|S|pbks|0|0|1
-Harnoor Singh|BAT|IND|0.25|63||pbks|0|0|1
+Ben Dwarshuis|BOWL|AUS|0.25|68|M|pbks|1|0|1
+Pyla Avinash|BAT|IND|0.25|60||pbks|0|0|1
+Vishal Nishad|BOWL|IND|0.25|58|S|pbks|0|0|1
+Harnoor Singh|BAT|IND|0.25|62||pbks|0|0|1
 David Miller|BAT|SA|1.5|82||dc|14|1|1
-Axar Patel|AR|IND|1.5|86|S|dc|14|1|1
-KL Rahul|WK|IND|2.0|88||dc|14|1|1
-Sameer Rizvi|BAT|IND|0.5|72||dc|14|0|1
+Axar Patel|AR|IND|1.5|85|S|dc|14|1|1
+KL Rahul|WK|IND|2.0|89||dc|14|1|1
+Sameer Rizvi|BAT|IND|0.5|70||dc|14|0|1
 Ashutosh Sharma|BAT|IND|0.5|74||dc|14|0|1
-Tristan Stubbs|WK|SA|0.75|79||dc|14|0|1
-Vipraj Nigam|BOWL|IND|0.5|69|S|dc|13|0|1
-Auqib Nabi|BOWL|IND|0.5|71|M|dc|12|0|1
-Lungi Ngidi|BOWL|SA|0.75|77|F|dc|12|0|1
-Pathum Nissanka|BAT|SL|0.5|73||dc|12|0|1
-Nitish Rana|BAT|IND|0.5|73||dc|12|0|1
+Tristan Stubbs|WK|SA|0.75|80||dc|14|0|1
+Vipraj Nigam|BOWL|IND|0.5|70|S|dc|13|0|1
+Auqib Nabi|BOWL|IND|0.5|68|M|dc|12|0|1
+Lungi Ngidi|BOWL|SA|0.75|78|F|dc|12|0|1
+Pathum Nissanka|BAT|SL|0.5|72||dc|12|0|1
+Nitish Rana|BAT|IND|0.5|74||dc|12|0|1
 Kuldeep Yadav|BOWL|IND|1.5|88|S|dc|12|1|1
-Karun Nair|BAT|IND|0.5|74||dc|11|1|1
-T Natarajan|BOWL|IND|0.75|77|M|dc|11|1|1
+Karun Nair|BAT|IND|0.5|72||dc|11|1|1
+T Natarajan|BOWL|IND|0.75|78|M|dc|11|1|1
 Mukesh Kumar|BOWL|IND|0.75|76|M|dc|10|0|1
-Dushmantha Chameera|BOWL|SL|0.5|73|F|dc|8|0|1
+Dushmantha Chameera|BOWL|SL|0.5|72|F|dc|8|0|1
 Abhishek Porel|WK|IND|0.5|72||dc|7|1|1
 Mitchell Starc|BOWL|AUS|2.0|88|F|dc|6|1|1
-Vijay Tripurana|AR|IND|0.5|68|S|dc|5|0|1
-Sahil Parakh|BOWL|IND|0.25|64|S|dc|4|0|1
-Madhav Tiwari|AR|IND|0.25|66|M|dc|3|0|1
-Ben Duckett|BAT|ENG|0.5|73||dc|0|0|1
-Ajay Mandal|AR|IND|0.25|63|S|dc|0|0|1
-Prithvi Shaw|BAT|IND|0.5|73||dc|0|1|1
-Finn Allen|BAT|NZ|0.5|74||kkr|14|0|1
+Vijay Tripurana|AR|IND|0.5|60|S|dc|5|0|1
+Sahil Parakh|BOWL|IND|0.25|60|S|dc|4|0|1
+Madhav Tiwari|AR|IND|0.25|62|M|dc|3|0|1
+Ben Duckett|BAT|ENG|0.5|76||dc|0|0|1
+Ajay Mandal|AR|IND|0.25|62|S|dc|0|0|1
+Prithvi Shaw|BAT|IND|0.5|68||dc|0|1|1
+Finn Allen|BAT|NZ|0.5|78||kkr|14|0|1
 Vaibhav Arora|BOWL|IND|0.5|74|M|kkr|14|0|1
-Tejasvi Dahiya|WK|IND|0.75|76||kkr|14|0|1
-Cameron Green|AR|AUS|1.5|83|M|kkr|14|1|1
-Manish Pandey|BAT|IND|0.5|70||kkr|14|0|1
+Tejasvi Dahiya|WK|IND|0.75|60||kkr|14|0|1
+Cameron Green|AR|AUS|1.5|82|M|kkr|14|1|1
+Manish Pandey|BAT|IND|0.5|66||kkr|14|0|1
 Rovman Powell|BAT|WI|0.75|76||kkr|14|0|1
 Ajinkya Rahane|BAT|IND|0.75|74||kkr|14|0|1
-Anukul Roy|AR|IND|0.75|76|S|kkr|14|0|1
-Ramandeep Singh|BAT|IND|0.5|73||kkr|14|0|1
-Rinku Singh|BAT|IND|1.0|84||kkr|14|1|1
-Kartik Tyagi|BOWL|IND|0.5|72|F|kkr|14|0|1
+Anukul Roy|AR|IND|0.75|68|S|kkr|14|0|1
+Ramandeep Singh|BAT|IND|0.5|74||kkr|14|0|1
+Rinku Singh|BAT|IND|1.0|82||kkr|14|1|1
+Kartik Tyagi|BOWL|IND|0.5|70|F|kkr|14|0|1
 Sunil Narine|BOWL|WI|1.5|88|S|kkr|13|1|1
-Angkrish Raghuvanshi|BAT|IND|0.5|75||kkr|13|0|1
-Varun Chakravarthy|BOWL|IND|1.0|83|S|kkr|11|1|1
-Navdeep Saini|BOWL|IND|0.5|72|F|kkr|9|0|1
-Tim Seifert|WK|NZ|0.5|72||kkr|8|0|1
-Saurabh Dubey|BOWL|IND|0.25|67|S|kkr|7|0|1
-Rahul Tripathi|BAT|IND|0.5|74||kkr|4|0|1
-Blessing Muzarabani|BOWL|ZIM|0.25|63|F|kkr|3|0|1
+Angkrish Raghuvanshi|BAT|IND|0.5|74||kkr|13|0|1
+Varun Chakravarthy|BOWL|IND|1.0|86|S|kkr|11|1|1
+Navdeep Saini|BOWL|IND|0.5|70|F|kkr|9|0|1
+Tim Seifert|WK|NZ|0.5|76||kkr|8|0|1
+Saurabh Dubey|BOWL|IND|0.25|60|S|kkr|7|0|1
+Rahul Tripathi|BAT|IND|0.5|70||kkr|4|0|1
+Blessing Muzarabani|BOWL|ZIM|0.25|74|F|kkr|3|0|1
 Matheesha Pathirana|BOWL|SL|1.0|82|F|kkr|1|1|1
-Sarthak Ranjan|BAT|IND|0.25|64||kkr|1|0|1
-Daksh Kamra|AR|IND|0.25|63|M|kkr|0|0|1
-Umran Malik|BOWL|IND|0.5|71|F|kkr|0|1|1
-Mustafizur Rahman|BOWL|BAN|1.0|79|M|kkr|0|1|1
-Rachin Ravindra|AR|NZ|1.0|80|S|kkr|0|1|1
-Prashant Solanki|BOWL|IND|0.25|60|S|kkr|0|0|1
-Noor Ahmad|BOWL|AFG|0.75|78|S|csk|14|1|1
-Shivam Dube|AR|IND|1.0|81|M|csk|14|1|1
-Ruturaj Gaikwad|BAT|IND|1.5|86||csk|14|1|1
+Sarthak Ranjan|BAT|IND|0.25|58||kkr|1|0|1
+Daksh Kamra|AR|IND|0.25|58|M|kkr|0|0|1
+Umran Malik|BOWL|IND|0.5|70|F|kkr|0|1|1
+Mustafizur Rahman|BOWL|BAN|1.0|80|M|kkr|0|1|1
+Rachin Ravindra|AR|NZ|1.0|78|S|kkr|0|1|1
+Prashant Solanki|BOWL|IND|0.25|66|S|kkr|0|0|1
+Noor Ahmad|BOWL|AFG|0.75|82|S|csk|14|1|1
+Shivam Dube|AR|IND|1.0|80|M|csk|14|1|1
+Ruturaj Gaikwad|BAT|IND|1.5|84||csk|14|1|1
 Anshul Kamboj|BOWL|IND|0.5|72|M|csk|14|0|1
-Sarfaraz Khan|BAT|IND|0.5|73||csk|14|0|1
-Sanju Samson|WK|IND|2.0|87||csk|14|1|1
-Kartik Sharma|WK|IND|0.75|76||csk|14|0|1
-Matthew Short|AR|AUS|0.5|73|S|csk|14|0|1
-Gurjapneet Singh|BOWL|IND|0.5|73|F|csk|14|0|1
-Prashant Veer|AR|IND|0.75|75|S|csk|13|0|1
-Dewald Brevis|BAT|SA|0.75|77||csk|11|0|1
-Jamie Overton|BOWL|ENG|0.5|72|F|csk|11|0|1
-Akeal Hosein|BOWL|WI|0.5|73|S|csk|10|0|1
-Mukesh Choudhary|BOWL|IND|0.5|69|M|csk|9|0|1
-Matt Henry|BOWL|NZ|0.75|76|M|csk|8|0|1
-Urvil Patel|WK|IND|0.5|68||csk|8|0|1
-Ramakrishna Ghosh|BOWL|IND|0.25|66|M|csk|6|0|1
-Ayush Mhatre|AR|IND|0.5|69|M|csk|6|0|1
-Khaleel Ahmed|BOWL|IND|0.5|74|M|csk|5|1|1
-Spencer Johnson|BOWL|AUS|0.75|76|F|csk|3|0|1
-Rahul Chahar|BOWL|IND|0.5|72|S|csk|2|0|1
-Aman Hakim Khan|BOWL|IND|0.25|62|M|csk|2|0|1
-Macneil Hadley Noronha|BAT|IND|0.25|64||csk|1|0|1
-Akash Madhwal|BOWL|IND|0.25|61|M|csk|1|0|1
-Kuldip Yadav|BOWL|IND|0.25|61|M|csk|1|0|1
-Zak Foulkes|AR|NZ|0.25|63|M|csk|0|0|1
-Shreyas Gopal|AR|IND|0.5|70|S|csk|0|0|1
-Naman Dhir|BAT|IND|0.5|73||mi|14|0|1
+Sarfaraz Khan|BAT|IND|0.5|72||csk|14|0|1
+Sanju Samson|WK|IND|2.0|86||csk|14|1|1
+Kartik Sharma|WK|IND|0.75|66||csk|14|0|1
+Matthew Short|AR|AUS|0.5|78|S|csk|14|0|1
+Gurjapneet Singh|BOWL|IND|0.5|70|F|csk|14|0|1
+Prashant Veer|AR|IND|0.75|68|S|csk|13|0|1
+Dewald Brevis|BAT|SA|0.75|78||csk|11|0|1
+Jamie Overton|BOWL|ENG|0.5|74|F|csk|11|0|1
+Akeal Hosein|BOWL|WI|0.5|76|S|csk|10|0|1
+Mukesh Choudhary|BOWL|IND|0.5|68|M|csk|9|0|1
+Matt Henry|BOWL|NZ|0.75|78|M|csk|8|0|1
+Urvil Patel|WK|IND|0.5|72||csk|8|0|1
+Ramakrishna Ghosh|BOWL|IND|0.25|62|M|csk|6|0|1
+Ayush Mhatre|AR|IND|0.5|76|M|csk|6|0|1
+Khaleel Ahmed|BOWL|IND|0.5|76|M|csk|5|1|1
+Spencer Johnson|BOWL|AUS|0.75|74|F|csk|3|0|1
+Rahul Chahar|BOWL|IND|0.5|70|S|csk|2|0|1
+Aman Hakim Khan|BOWL|IND|0.25|58|M|csk|2|0|1
+Macneil Hadley Noronha|BAT|IND|0.25|56||csk|1|0|1
+Akash Madhwal|BOWL|IND|0.25|66|M|csk|1|0|1
+Kuldip Yadav|BOWL|IND|0.25|58|M|csk|1|0|1
+Zak Foulkes|AR|NZ|0.25|66|M|csk|0|0|1
+Shreyas Gopal|AR|IND|0.5|68|S|csk|0|0|1
+Naman Dhir|BAT|IND|0.5|74||mi|14|0|1
 Tilak Varma|BAT|IND|1.0|84||mi|14|1|1
 Jasprit Bumrah|BOWL|IND|2.0|96|F|mi|13|1|1
-Shardul Thakur|BOWL|IND|0.75|75|M|mi|13|1|1
-Suryakumar Yadav|BAT|IND|2.0|93||mi|13|1|1
-Raj Angad Bawa|AR|IND|0.5|72|M|mi|12|0|1
-Ryan Rickelton|WK|SA|0.75|77||mi|12|0|1
-Corbin Bosch|AR|SA|0.5|74|F|mi|11|0|1
-Allah Ghazanfar|BOWL|AFG|0.5|73|S|mi|11|0|1
-Robin Minz|WK|IND|0.5|68||mi|11|0|1
-Trent Boult|BOWL|NZ|1.5|86|M|mi|10|1|1
-Hardik Pandya|AR|IND|2.0|90|M|mi|10|1|1
-Ashwani Kumar|BOWL|IND|0.5|72|M|mi|9|0|1
-Mayank Rawat|AR|IND|0.5|72|S|mi|9|0|1
-Raghu Sharma|AR|IND|0.5|72|S|mi|9|0|1
-Rohit Sharma|BAT|IND|2.0|92||mi|9|1|1
-Deepak Chahar|BOWL|IND|0.75|77|M|mi|8|1|1
-Will Jacks|BAT|ENG|1.0|80||mi|8|1|1
-Sherfane Rutherford|BAT|WI|0.75|77||mi|8|0|1
-Krish Bhagat|BOWL|IND|0.25|67|M|mi|7|0|1
-Mayank Markande|BOWL|IND|0.5|70|S|mi|4|0|1
-Mitchell Santner|AR|NZ|0.75|77|S|mi|4|0|1
-Quinton de Kock|WK|SA|1.5|85||mi|3|1|1
-Danish Malewar|BAT|IND|0.25|65||mi|2|0|1
-Atharva Ankolekar|BAT|IND|0.25|63||mi|0|0|1
-Mohammed Salahuddin Izhar|BOWL|IND|0.25|60|M|mi|0|0|1
-Rishabh Pant|WK|IND|2.0|90||lsg|14|1|1
-Nicholas Pooran|WK|WI|1.5|87||lsg|14|1|1
-Digvesh Rathi|BOWL|IND|0.5|70|S|lsg|14|0|1
-Abdul Samad|AR|IND|0.5|72|S|lsg|14|0|1
+Shardul Thakur|BOWL|IND|0.75|74|M|mi|13|1|1
+Suryakumar Yadav|BAT|IND|2.0|91||mi|13|1|1
+Raj Angad Bawa|AR|IND|0.5|66|M|mi|12|0|1
+Ryan Rickelton|WK|SA|0.75|80||mi|12|0|1
+Corbin Bosch|AR|SA|0.5|72|F|mi|11|0|1
+Allah Ghazanfar|BOWL|AFG|0.5|72|S|mi|11|0|1
+Robin Minz|WK|IND|0.5|70||mi|11|0|1
+Trent Boult|BOWL|NZ|1.5|85|M|mi|10|1|1
+Hardik Pandya|AR|IND|2.0|87|M|mi|10|1|1
+Ashwani Kumar|BOWL|IND|0.5|70|M|mi|9|0|1
+Mayank Rawat|AR|IND|0.5|60|S|mi|9|0|1
+Raghu Sharma|AR|IND|0.5|66|S|mi|9|0|1
+Rohit Sharma|BAT|IND|2.0|85||mi|9|1|1
+Deepak Chahar|BOWL|IND|0.75|78|M|mi|8|1|1
+Will Jacks|BAT|ENG|1.0|82||mi|8|1|1
+Sherfane Rutherford|BAT|WI|0.75|78||mi|8|0|1
+Krish Bhagat|BOWL|IND|0.25|60|M|mi|7|0|1
+Mayank Markande|BOWL|IND|0.5|68|S|mi|4|0|1
+Mitchell Santner|AR|NZ|0.75|78|S|mi|4|0|1
+Quinton de Kock|WK|SA|1.5|84||mi|3|1|1
+Danish Malewar|BAT|IND|0.25|60||mi|2|0|1
+Atharva Ankolekar|BAT|IND|0.25|58||mi|0|0|1
+Mohammed Salahuddin Izhar|BOWL|IND|0.25|56|M|mi|0|0|1
+Rishabh Pant|WK|IND|2.0|84||lsg|14|1|1
+Nicholas Pooran|WK|WI|1.5|88||lsg|14|1|1
+Digvesh Rathi|BOWL|IND|0.5|72|S|lsg|14|0|1
+Abdul Samad|AR|IND|0.5|70|S|lsg|14|0|1
 Prince Yadav|BOWL|IND|0.5|74|F|lsg|14|0|1
-Mukul D Choudhary|WK|IND|0.75|75||lsg|13|0|1
-Mitchell Marsh|AR|AUS|1.0|80|M|lsg|13|1|1
-Mohammed Shami|BOWL|IND|1.5|88|F|lsg|13|1|1
-Manimaran Siddharth|BOWL|IND|0.5|71|S|lsg|13|0|1
-Himmat Singh|BAT|IND|0.75|75||lsg|13|0|1
-Aiden Markram|BAT|SA|1.0|80||lsg|12|1|1
-Ayush Badoni|BAT|IND|0.5|75||lsg|11|1|1
-Shahbaz Ahmed|AR|IND|0.5|73|S|lsg|10|0|1
-Avesh Khan|BOWL|IND|0.5|74|M|lsg|10|1|1
-Mayank Yadav|BOWL|IND|0.75|78|F|lsg|10|1|1
-Mohsin Khan|BOWL|IND|0.5|73|M|lsg|7|0|1
-Matthew Breetzke|BAT|SA|0.5|69||lsg|6|0|1
+Mukul D Choudhary|WK|IND|0.75|66||lsg|13|0|1
+Mitchell Marsh|AR|AUS|1.0|87|M|lsg|13|1|1
+Mohammed Shami|BOWL|IND|1.5|82|F|lsg|13|1|1
+Manimaran Siddharth|BOWL|IND|0.5|68|S|lsg|13|0|1
+Himmat Singh|BAT|IND|0.75|68||lsg|13|0|1
+Aiden Markram|BAT|SA|1.0|78||lsg|12|1|1
+Ayush Badoni|BAT|IND|0.5|74||lsg|11|1|1
+Shahbaz Ahmed|AR|IND|0.5|70|S|lsg|10|0|1
+Avesh Khan|BOWL|IND|0.5|76|M|lsg|10|1|1
+Mayank Yadav|BOWL|IND|0.75|80|F|lsg|10|1|1
+Mohsin Khan|BOWL|IND|0.5|72|M|lsg|7|0|1
+Matthew Breetzke|BAT|SA|0.5|70||lsg|6|0|1
 Josh Inglis|WK|AUS|1.0|78||lsg|5|0|1
-Akshat Raghuwanshi|BAT|IND|0.5|68||lsg|5|0|1
-George Linde|AR|SA|0.25|67|S|lsg|4|0|1
-Arshin Kulkarni|AR|IND|0.25|66|M|lsg|3|0|1
-Akash Maharaj Singh|BOWL|IND|0.25|63|M|lsg|3|0|1
-Anrich Nortje|BOWL|SA|1.0|80|F|lsg|2|1|1
-Arjun Tendulkar|BOWL|IND|0.25|61|M|lsg|1|0|1
+Akshat Raghuwanshi|BAT|IND|0.5|62||lsg|5|0|1
+George Linde|AR|SA|0.25|66|S|lsg|4|0|1
+Arshin Kulkarni|AR|IND|0.25|64|M|lsg|3|0|1
+Akash Maharaj Singh|BOWL|IND|0.25|64|M|lsg|3|0|1
+Anrich Nortje|BOWL|SA|1.0|82|F|lsg|2|1|1
+Arjun Tendulkar|BOWL|IND|0.25|62|M|lsg|1|0|1
 Wanindu Hasaranga|AR|SL|1.0|82|S|lsg|0|1|1
-Gudakesh Motie|BOWL|WI|0.25|60|S|lsg|0|0|1
-Naman Tiwari|BOWL|IND|0.25|60|M|lsg|0|0|1
-Ravichandran Ashwin|AR|IND|1.5|84||||1|0
-Harshit Rana|BOWL|IND|0.75|77|F|||1|0
-Ben Stokes|AR|ENG|2.0|86||||1|0
-Sam Curran|AR|ENG|1.5|82||||1|0
+Gudakesh Motie|BOWL|WI|0.25|70|S|lsg|0|0|1
+Naman Tiwari|BOWL|IND|0.25|62|M|lsg|0|0|1
+Ravichandran Ashwin|AR|IND|1.5|78||||1|0
+Harshit Rana|BOWL|IND|0.75|78|F|||1|0
+Ben Stokes|AR|ENG|2.0|82||||1|0
+Sam Curran|AR|ENG|1.5|80||||1|0
 Harry Brook|BAT|ENG|1.5|84||||1|0
-Jonny Bairstow|WK|ENG|1.0|80||||1|0
-Moeen Ali|AR|ENG|1.0|78||||1|0
-Glenn Maxwell|AR|AUS|1.5|85||||1|0
-David Warner|BAT|AUS|1.5|84||||1|0
-Jake Fraser-McGurk|BAT|AUS|1.0|80||||1|0
-Mujeeb Ur Rahman|BOWL|AFG|0.75|76|S|||1|0
-Kane Williamson|BAT|NZ|1.5|82||||1|0
-Daryl Mitchell|AR|NZ|1.0|80||||1|0
-Andre Russell|AR|WI|1.5|86||||1|0
-Maheesh Theekshana|BOWL|SL|0.75|77|S|||1|0
-Faf du Plessis|BAT|SA|1.0|80||||1|0
-Jason Roy|BAT|ENG|0.75|75||||1|0
-KS Bharat|WK|IND|0.5|71||||1|0
-Deepak Hooda|AR|IND|0.5|72||||1|0
-Adam Zampa|BOWL|AUS|0.75|77|S|||1|0
-Alzarri Joseph|BOWL|WI|0.5|74|F|||1|0
-Steve Smith|BAT|AUS|0.75|78||||0|0
-Rassie van der Dussen|BAT|SA|0.75|76||||0|0
-Devon Conway|BAT|NZ|1.0|79||||0|0
+Jonny Bairstow|WK|ENG|1.0|76||||1|0
+Moeen Ali|AR|ENG|1.0|74||||1|0
+Glenn Maxwell|AR|AUS|1.5|80||||1|0
+David Warner|BAT|AUS|1.5|78||||1|0
+Jake Fraser-McGurk|BAT|AUS|1.0|76||||1|0
+Mujeeb Ur Rahman|BOWL|AFG|0.75|72|S|||1|0
+Kane Williamson|BAT|NZ|1.5|74||||1|0
+Daryl Mitchell|AR|NZ|1.0|78||||1|0
+Andre Russell|AR|WI|1.5|82||||1|0
+Maheesh Theekshana|BOWL|SL|0.75|76|S|||1|0
+Faf du Plessis|BAT|SA|1.0|78||||1|0
+Jason Roy|BAT|ENG|0.75|74||||1|0
+KS Bharat|WK|IND|0.5|66||||1|0
+Deepak Hooda|AR|IND|0.5|68||||1|0
+Adam Zampa|BOWL|AUS|0.75|78|S|||1|0
+Alzarri Joseph|BOWL|WI|0.5|76|F|||1|0
+Steve Smith|BAT|AUS|0.75|70||||0|0
+Rassie van der Dussen|BAT|SA|0.75|74||||0|0
+Devon Conway|BAT|NZ|1.0|76||||0|0
 Mark Chapman|BAT|NZ|0.5|72||||0|0
-Ibrahim Zadran|BAT|AFG|0.5|71||||0|0
-Alex Carey|WK|AUS|0.75|74||||0|0
-Kusal Mendis|WK|SL|0.5|73||||0|0
+Ibrahim Zadran|BAT|AFG|0.5|68||||0|0
+Alex Carey|WK|AUS|0.75|70||||0|0
+Kusal Mendis|WK|SL|0.5|72||||0|0
 Rahmanullah Gurbaz|WK|AFG|0.75|76||||0|0
-Wriddhiman Saha|WK|IND|0.5|68||||0|0
-Vijay Shankar|AR|IND|0.5|70||||0|0
-Mahipal Lomror|AR|IND|0.5|69||||0|0
-Aaron Hardie|AR|AUS|0.5|72||||0|0
+Wriddhiman Saha|WK|IND|0.5|62||||0|0
+Vijay Shankar|AR|IND|0.5|66||||0|0
+Mahipal Lomror|AR|IND|0.5|64||||0|0
+Aaron Hardie|AR|AUS|0.5|70||||0|0
 Tom Curran|AR|ENG|0.5|72||||0|0
 Mohammad Nabi|AR|AFG|0.5|74||||0|0
 Sikandar Raza|AR|ZIM|0.75|76||||0|0
-Akash Deep|BOWL|IND|0.75|77|M|||0|0
-Mohit Sharma|BOWL|IND|0.5|74|M|||0|0
-Piyush Chawla|BOWL|IND|0.5|68|S|||0|0
+Akash Deep|BOWL|IND|0.75|76|M|||0|0
+Mohit Sharma|BOWL|IND|0.5|72|M|||0|0
+Piyush Chawla|BOWL|IND|0.5|64|S|||0|0
 Mark Wood|BOWL|ENG|1.0|80|F|||0|0
-Adil Rashid|BOWL|ENG|0.75|77|S|||0|0
+Adil Rashid|BOWL|ENG|0.75|80|S|||0|0
 Gus Atkinson|BOWL|ENG|0.75|76|F|||0|0
-Josh Tongue|BOWL|ENG|0.5|74|F|||0|0
-Reece Topley|BOWL|ENG|0.5|73|M|||0|0
-Gerald Coetzee|BOWL|SA|0.75|77|F|||0|0
-Keshav Maharaj|BOWL|SA|0.5|72|S|||0|0
-Nathan Ellis|BOWL|AUS|0.75|77|M|||0|0
-Jhye Richardson|BOWL|AUS|0.5|74|F|||0|0
-Tim Southee|BOWL|NZ|0.75|75|M|||0|0
-Fazalhaq Farooqi|BOWL|AFG|0.75|76|M|||0|0
-Naveen-ul-Haq|BOWL|AFG|0.5|74|M|||0|0`;
+Josh Tongue|BOWL|ENG|0.5|72|F|||0|0
+Reece Topley|BOWL|ENG|0.5|72|M|||0|0
+Gerald Coetzee|BOWL|SA|0.75|76|F|||0|0
+Keshav Maharaj|BOWL|SA|0.5|70|S|||0|0
+Nathan Ellis|BOWL|AUS|0.75|78|M|||0|0
+Jhye Richardson|BOWL|AUS|0.5|72|F|||0|0
+Tim Southee|BOWL|NZ|0.75|68|M|||0|0
+Fazalhaq Farooqi|BOWL|AFG|0.75|74|M|||0|0
+Naveen-ul-Haq|BOWL|AFG|0.5|72|M|||0|0
+MS Dhoni|WK|IND|2.0|97||||1|0`;
 const P = DATA.split('\n').map(l => { const a = l.split('|');
   return { n:a[0], r:a[1], c:a[2], b:+a[3], q:+a[4], bt:a[5]||'', t:a[6]||'', m:a[7]===''?null:+a[7], k:+a[8], s:+a[9] }; });
+
+/* natural batting zone(s) of each player: O opener (1-2), T top order (3-4), M middle (5-6), F finisher (7-8), L tail (9-11).
+   Players not listed get a default from their role. The client uses this to rate a player in his natural slot at full value
+   and lower in any other slot. */
+const ZN_RAW = {
+  O: 'Rohit Sharma|Shubman Gill|Yashasvi Jaiswal|Abhishek Sharma|Travis Head|Jos Buttler|Phil Salt|Ishan Kishan|Quinton de Kock|Ryan Rickelton|Ben Duckett|Finn Allen|David Warner|Priyansh Arya|Vaibhav Suryavanshi|Sanju Samson|Ayush Mhatre|Devon Conway|Jason Roy|Jake Fraser-McGurk|Rahmanullah Gurbaz|Pathum Nissanka|Matthew Breetzke|Tom Banton|Kusal Mendis|Tim Seifert|Salil Arora|Lhuan-dre Pretorius|Prithvi Shaw|Urvil Patel',
+  OT: 'Virat Kohli|Sai Sudharsan|KL Rahul|Ruturaj Gaikwad|Aiden Markram|Mitchell Marsh|Will Jacks|Jonny Bairstow|Rachin Ravindra|Ajinkya Rahane|Devdutt Padikkal|Faf du Plessis|Prabhsimran Singh|Matthew Short|Rahul Tripathi|Jordan Cox',
+  OL: 'Sunil Narine',
+  T: 'Suryakumar Yadav|Shreyas Iyer|Tilak Varma|Rajat Patidar|Kane Williamson|Steve Smith|Rassie van der Dussen|Himmat Singh|Angkrish Raghuvanshi|Manish Pandey|Karun Nair|Naman Dhir|Shubham Dubey|Suryansh Shedge|Sarfaraz Khan|Nitish Rana|Ayush Badoni',
+  TM: 'Harry Brook|Nicholas Pooran|Rishabh Pant|Riyan Parag|Nehal Wadhera|Dewald Brevis|Cameron Green|Venkatesh Iyer|Ben Stokes|Mark Chapman|Daryl Mitchell|Ibrahim Zadran|Vishnu Vinod|Sameer Rizvi|Jacob Bethell|Abhishek Porel|Kartik Sharma|Dhruv Jurel',
+  M: 'Heinrich Klaasen|Liam Livingstone|Glenn Maxwell|Aniket Verma|Ravichandran Smaran|Deepak Hooda|Vijay Shankar|Josh Inglis|Alex Carey|Kumar Kushagra|Tejasvi Dahiya',
+  MF: 'Jitesh Sharma|Tristan Stubbs|Hardik Pandya|Glenn Phillips|Marcus Stoinis|Shivam Dube|Nitish Kumar Reddy|Axar Patel|Ravindra Jadeja|Washington Sundar|Sam Curran|Moeen Ali|Tim David|Rinku Singh|David Miller|Shimron Hetmyer|Rovman Powell|Sherfane Rutherford|Shashank Singh|MS Dhoni|Mitchell Owen|Sikandar Raza|Donovan Ferreira|Wriddhiman Saha|KS Bharat|Anuj Rawat|Robin Minz|Mukul D Choudhary|Ramandeep Singh',
+  F: 'Andre Russell|Romario Shepherd|Rahul Tewatia|Ashutosh Sharma|Abdul Samad|Shahrukh Khan|Dasun Shanaka|Jason Holder|Mitchell Santner|Azmatullah Omarzai|Aaron Hardie|Mohammad Nabi|Mahipal Lomror|Krunal Pandya|Corbin Bosch|Marco Jansen|Tom Curran|Jamie Overton|Shahbaz Ahmed|Nishant Sindhu|Anukul Roy|Kamindu Mendis|Prashant Veer|Shreyas Gopal|Arshad Khan|Sakib Hussain|Yash Raj Punja',
+  FL: 'Shardul Thakur|Deepak Chahar|Harshit Rana|Luke Wood|Ravichandran Ashwin|Akeal Hosein|Wanindu Hasaranga|Mayank Rawat|Swapnil Singh|Harpreet Brar|Musheer Khan|Raj Angad Bawa|Mangesh Yadav|Kanishk Chouhan'
+};
+const ZN = {}; Object.entries(ZN_RAW).forEach(([z, l]) => l.split('|').forEach(n => { ZN[n] = z; }));
+const ZDEF = { BAT: 'T', WK: 'M', AR: 'MF', BOWL: 'L' };
+P.forEach(p => { p.z = ZN[p.n] || ZDEF[p.r] || 'M'; });
 
 
 /* ---------- state (in memory) ---------- */
@@ -371,7 +393,20 @@ function saveNow() {
     fs.renameSync(tmp, DATA_FILE);
   } catch (e) { console.error('Could not save rooms:', e.message); }
 }
-function persist() { if (!saveT) saveT = setTimeout(() => { saveT = null; saveNow(); }, 1500); }
+let saving = false, saveAgain = false;
+function saveAsync() {                                   // never block the 100 ms auction clock on disk I/O
+  if (saving) { saveAgain = true; return; }
+  saving = true;
+  let json;
+  try { const o = {}; for (const [k, s] of rooms) o[k] = s; json = JSON.stringify(o, (k, v) => k === 'clients' ? undefined : v); }
+  catch (e) { saving = false; console.error('Could not save rooms:', e.message); return; }
+  const tmp = DATA_FILE + '.tmp';
+  fs.writeFile(tmp, json, err => {
+    if (err) { saving = false; console.error('Could not save rooms:', err.message); return; }
+    fs.rename(tmp, DATA_FILE, err2 => { saving = false; if (err2) console.error('Could not save rooms:', err2.message); if (saveAgain) { saveAgain = false; persist(); } });
+  });
+}
+function persist() { if (!saveT) saveT = setTimeout(() => { saveT = null; saveAsync(); }, 3000); }
 function restore() {
   try {
     const o = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')), now = Date.now();
@@ -538,7 +573,7 @@ function act(s, r) {
         if (k < 0) throw new Error('That player has moved (trade), so it cannot be undone.');
         t.sq.splice(k, 1); t.purse = r2(t.purse + L.a); if (P[L.cur].c !== 'IND') t.os--; if (L.rtm) t.rtm++;
       } else s.un = s.un.filter(x => x !== L.cur);
-      s.last = null; s.rtm = null; s.i = L.i; s.cur = L.cur; s.stage = 'bid'; s.bid = 0; s.lead = null; s.passed = []; s.res = null; s.auto = {}; s.nb = 0; s.endsAt = now + bidMs(s);
+      s.last = null; s.rtm = null; s.i = L.i; s.cur = L.cur; s.stage = 'bid'; s.bh = []; s.bid = 0; s.lead = null; s.passed = []; s.res = null; s.auto = {}; s.nb = 0; s.endsAt = now + bidMs(s);
       s.log.push('↩ Host undid the last result. ' + P[L.cur].n + ' is back on the block.'); break; }
     case 'rtm': case 'rtmpass': {
       if (s.stage !== 'rtm' || !s.rtm) throw new Error('No Right to Match is open.');
@@ -560,7 +595,14 @@ function act(s, r) {
       (Array.isArray(r.ids) ? r.ids : []).forEach(x => { const n = Number(x); if (own.includes(n) && !seen.has(n)) { seen.add(n); list.push(n); } });
       if (list.length && list.length !== 11) throw new Error('Pick exactly 11 players, or clear to let the coach pick.');
       if (osOf(list) > 4) throw new Error('At most 4 overseas players in the XI.');
-      s.xi = s.xi || {}; if (list.length) s.xi[tid] = list; else delete s.xi[tid]; break; }
+      s.xi = s.xi || {}; s.xc = s.xc || {};
+      if (!list.length) { delete s.xi[tid]; delete s.xc[tid]; break; }
+      const cap = Number(r.cap), vc = Number(r.vc);                 // captain and vice-captain must be in the XI and different people
+      if (r.cap != null && !list.includes(cap)) throw new Error('The captain must be in the XI.');
+      if (r.vc != null && !list.includes(vc)) throw new Error('The vice-captain must be in the XI.');
+      if (r.cap != null && r.vc != null && cap === vc) throw new Error('Captain and vice-captain must be different players.');
+      s.xi[tid] = list;                                             // the order of the list IS the batting order (1 to 11)
+      s.xc[tid] = { c: r.cap != null ? cap : null, v: r.vc != null ? vc : null }; break; }
     case 'end':
       if (!isHost || s.phase !== 'auction') throw new Error('Host only.');
       finish(s); break;
@@ -635,6 +677,7 @@ function answerTrade(s, pl, r, now) {
   A.os = osOf(A.sq.map(x => x[0])); B.os = osOf(B.sq.map(x => x[0]));
   A.purse = r2(A.purse - net); B.purse = r2(B.purse + net);
   s.trades = s.trades.filter(x => x !== t && tradeWhy(s, x, now) === '');   // drop offers this trade made impossible
+  s.lt = { n: (s.tc = (s.tc || 0) + 1), from: t.from, to: t.to, gp: t.gp.slice(), rp: t.rp.slice(), gc: t.gc, rc: t.rc, at: now };   // every device plays the trade animation once per n
   const nm = l => l.map(i => P[i].n).join(' & ');
   s.log.push('TRADE: ' + t.from.toUpperCase() + ' gives ' + (nm(t.gp) || 'no players') + (t.gc ? ' + ' + t.gc + ' Cr' : '') + ' to ' + t.to.toUpperCase() + ' for ' + (nm(t.rp) || 'no players') + (t.rc ? ' + ' + t.rc + ' Cr' : ''));
   if (s.log.length > 40) s.log = s.log.slice(-30);
@@ -672,7 +715,7 @@ function startAuction(s, isHost, now) {
   s.order = pool.sort((x, y) => s.setOf[x] - s.setOf[y]);
   s.tm = {}; claimed.forEach(([k, p]) => s.tm[p.team] = { s: p.team.toUpperCase(), owner: p.name, purse: PURSE, os: 0, sq: [], rtm: s.rtmN || 0 });
   s.form = {}; if (s.formOn) pool.forEach(i => { const d = Math.round((Math.random() * 2 - 1) * 3); if (d) s.form[i] = d; });
-  s.nb = 0; s.auto = {}; s.sponsored = 0; s.last = null; s.xi = {};
+  s.nb = 0; s.auto = {}; s.sponsored = 0; s.last = null; s.xi = {}; s.xc = {};
   s.i = -1; s.un = []; s.passed = []; s.phase = 'auction';
   s.log = ['Auction started!'];
   nextLot(s, now);
@@ -688,7 +731,7 @@ function why(s, tid, amt) {
   if (s.passed.includes(tid)) return 'Passed';
   if (t.sq.length >= msq(s)) return 'Squad full';
   if (p.c !== 'IND' && t.os >= osl(s)) return 'Overseas full';
-  if (t.purse - amt < Math.max(0, Math.min(14, msq(s)) - t.sq.length) * .5) return 'Purse low';
+  if (t.purse - amt < reserveFor(s, t.sq.length + 1) - 1e-9) return 'Keep ' + reserveFor(s, t.sq.length + 1) + ' Cr to reach the minimum squad';
   return '';
 }
 
@@ -703,7 +746,7 @@ function placeBid(s, r, now) {
     if (!isFinite(amt) || amt < need - 1e-9 || amt > need + 10 || Math.abs(Math.round(amt / .25) * .25 - amt) > 1e-9) throw new Error('Price moved to ' + need + ' Cr.');
   } else if (Math.abs(need - r.amt) > 1e-9) throw new Error('Price moved to ' + need + ' Cr.');
   const w = why(s, tid, amt); if (w) throw new Error(w);
-  s.bid = amt; s.lead = tid; s.nb = (s.nb || 0) + 1;
+  s.bid = amt; s.lead = tid; s.nb = (s.nb || 0) + 1; (s.bh = s.bh || []).push([tid, amt]);
   s.endsAt = Math.max(s.endsAt, now + bumpMs(s));
   s.log.push(tid.toUpperCase() + ' bids ' + amt + ' Cr' + (r.jump && amt > need ? ' (jump)' : ''));
   runAuto(s, now);
@@ -718,7 +761,7 @@ function runAuto(s, now) {
     const need = nextBid(s);
     const c = Object.keys(s.auto).filter(t => t !== s.lead && s.tm[t] && s.auto[t] >= need - 1e-9 && !why(s, t, need)).sort((a, b) => s.auto[b] - s.auto[a])[0];
     if (!c) break;
-    s.bid = need; s.lead = c; s.nb = (s.nb || 0) + 1; s.endsAt = Math.max(s.endsAt, now + bumpMs(s));
+    s.bid = need; s.lead = c; s.nb = (s.nb || 0) + 1; (s.bh = s.bh || []).push([c, need]); s.endsAt = Math.max(s.endsAt, now + bumpMs(s));
     s.log.push(c.toUpperCase() + ' bids ' + need + ' Cr (auto)');
   }
 }
@@ -824,7 +867,7 @@ function nextLot(s, now) {
     if (!Object.keys(s.tm).some(t => { s.passed = []; return !why(s, t, baseOf(s, idx)); })) { s.un.push(idx); continue; }
     break;
   }
-  s.stage = 'bid'; s.bid = 0; s.lead = null; s.passed = []; s.res = null; s.auto = {}; s.nb = 0; s.endsAt = now + bidMs(s);
+  s.stage = 'bid'; s.bh = []; s.bid = 0; s.lead = null; s.passed = []; s.res = null; s.auto = {}; s.nb = 0; s.endsAt = now + bidMs(s);
   s.log.push('Next up: ' + P[s.cur].n + ' (' + P[s.cur].r + ', ' + P[s.cur].c + '), base ' + baseOf(s, s.cur) + ' Cr' + (s.acc ? ' (accelerated)' : ''));
 }
 
@@ -846,20 +889,48 @@ function startAcc(s, now) {
   nextLot(s, now);
 }
 
-function finish(s) { s.phase = 'done'; s.stage = 'done'; s.log.push('Auction complete!'); recordHistory(s); }
+/* every team must own at least minsq players: whoever is short is given the best cheap unsold players at half base price */
+function fillMin(s) {
+  const owned = new Set(); Object.values(s.tm).forEach(t => t.sq.forEach(x => owned.add(x[0])));
+  const cand = poolIdx(s.pool).filter(i => !owned.has(i));
+  const ids = Object.keys(s.tm).sort((a, b) => s.tm[a].sq.length - s.tm[b].sq.length);
+  ids.forEach(id => {
+    const t = s.tm[id], need0 = minsq(s) - t.sq.length; if (need0 <= 0) return;
+    let got = 0;
+    while (t.sq.length < minsq(s)) {
+      const have = t.sq.map(x => P[x[0]]), cnt = f => have.filter(f).length;
+      let best = -1, bs = -1e9;
+      cand.forEach(i => {
+        if (owned.has(i)) return; const p = P[i], price = accB(p.b);
+        if (p.c !== 'IND' && t.os >= osl(s)) return;
+        if (t.purse - price < reserveFor(s, t.sq.length + 1) - 1e-9) return;
+        let v = p.q - price * 4;
+        if (p.r === 'WK' && !cnt(x => x.r === 'WK')) v += 10;
+        if ((p.r === 'BOWL' || p.r === 'AR') && cnt(x => x.r === 'BOWL' || x.r === 'AR') < 7) v += 6;
+        if ((p.r === 'BAT' || p.r === 'WK') && cnt(x => x.r === 'BAT' || x.r === 'WK') < 6) v += 4;
+        if (v > bs) { bs = v; best = i; }
+      });
+      if (best < 0) break;
+      const price = accB(P[best].b); owned.add(best); t.sq.push([best, price]); t.purse = r2(t.purse - price);
+      if (P[best].c !== 'IND') t.os++; s.un = (s.un || []).filter(x => x !== best); got++;
+    }
+    if (got) s.log.push('AUTO-BUY: ' + id.toUpperCase() + ' was ' + need0 + ' short of the minimum squad (' + minsq(s) + '), so ' + got + ' cheap player(s) were added at half base price.' + (t.sq.length < minsq(s) ? ' The pool ran out, so it is still short.' : ''));
+  });
+}
+function finish(s) { fillMin(s); s.phase = 'done'; s.stage = 'done'; s.log.push('Auction complete!'); recordHistory(s); }
 
 /* ---------- what each device sees (no player ids are ever sent) ---------- */
 function view(s, pid) {
   const me = s.players[pid];
   return {
-    ok: 1, now: Date.now(), seq: s.seq, maxsq: msq(s), bidMs: bidMs(s), bumpMs: bumpMs(s), acc: s.acc ? 1 : 0, base: s.cur != null ? baseOf(s, s.cur) : 0, osl: osl(s), pzLeft: 99, hold: s.hold ? { name: s.hold.name, team: s.hold.team, until: s.hold.until, mine: s.hold.by === pid } : null, locked: !!s.locked, opts: { timer: s.timer || 'classic', rtm: s.rtmN || 0, form: !!s.formOn, sponsor: !!s.sponsorOn }, rn: s.rn || 0, auto: (me.team && s.auto && s.auto[me.team]) || 0, fcur: (s.cur != null && s.form && s.form[s.cur]) || 0, form: s.phase === 'done' ? (s.form || {}) : null, xi: s.phase === 'done' ? (s.xi || {}) : null, rtm: s.stage === 'rtm' && s.rtm ? { t: s.rtm.t, w: s.rtm.w, a: s.rtm.a, until: s.rtmUntil } : null, hostAway: !!(s.hostAway && Date.now() - s.hostAway >= HOST_AWAY_MS), paused: s.phase === 'auction' && !!s.pausedAt, pausedAt: s.pausedAt || 0, pend: (s.trades || []).slice(0, 1).map(t => [t.from, t.to])[0] || null, code: s.code, phase: s.phase, stage: s.stage || null, pool: s.pool,
+    ok: 1, now: Date.now(), lt: s.lt && Date.now() - s.lt.at < 60000 ? s.lt : null, seq: s.seq, maxsq: msq(s), minsq: minsq(s), bidMs: bidMs(s), bumpMs: bumpMs(s), acc: s.acc ? 1 : 0, base: s.cur != null ? baseOf(s, s.cur) : 0, osl: osl(s), pzLeft: 99, hold: s.hold ? { name: s.hold.name, team: s.hold.team, until: s.hold.until, mine: s.hold.by === pid } : null, locked: !!s.locked, opts: { timer: s.timer || 'classic', rtm: s.rtmN || 0, form: !!s.formOn, sponsor: !!s.sponsorOn }, rn: s.rn || 0, auto: (me.team && s.auto && s.auto[me.team]) || 0, fcur: (s.cur != null && s.form && s.form[s.cur]) || 0, form: s.phase === 'done' ? (s.form || {}) : null, xi: s.phase === 'done' ? (s.xi || {}) : null, xc: s.phase === 'done' ? (s.xc || {}) : null, rtm: s.stage === 'rtm' && s.rtm ? { t: s.rtm.t, w: s.rtm.w, a: s.rtm.a, until: s.rtmUntil } : null, hostAway: !!(s.hostAway && Date.now() - s.hostAway >= HOST_AWAY_MS), paused: s.phase === 'auction' && !!s.pausedAt, pausedAt: s.pausedAt || 0, pend: (s.trades || []).slice(0, 1).map(t => [t.from, t.to])[0] || null, code: s.code, phase: s.phase, stage: s.stage || null, pool: s.pool,
     you: { pid, team: me.team, isHost: pid === s.host },
     players: Object.entries(s.players).map(([k, p], n) => ({ n, name: p.name, team: p.team, host: k === s.host, me: k === pid })),
     teams: s.tm ? Object.entries(s.tm).map(([id, t]) => ({ id, owner: t.owner, purse: t.purse, os: t.os, sq: t.sq, rtm: t.rtm || 0 })) : [],
     cur: s.cur, i: s.i, total: s.order ? s.order.length : 0, setLabel: s.acc ? 'Accelerated round (half base price)' : s.setn && s.cur != null ? s.setn[s.setOf[s.cur]] : '',
     bid: s.bid, lead: s.lead, endsAt: s.endsAt, passed: s.passed || [], res: s.res || null, un: s.un || [],
     pick: s.stage === 'pick' ? { pool: s.accPool, mine: (me.team && s.picks[me.team]) || [], ready: s.ready, max: MAX_PICK, teams: Object.keys(s.tm) } : null,
-    log: (s.log || []).slice(-8),
+    log: (s.log || []).slice(-8), bh: (s.bh || []).slice(-6).reverse(), nbids: s.nb || 0, up: s.order && !s.acc ? s.order.slice(s.i + 1, s.i + 6) : [],
     chat: (s.chat || []).slice(-40).map(m => [m.id, m.name, m.team, m.text, m.ts, m.pid === pid ? 1 : 0]),
     trades: (s.trades || []).filter(t => me.team && (t.from === me.team || t.to === me.team) && Date.now() < t.at + TRADE_TTL).map(t => ({ id: t.id, from: t.from, to: t.to, gp: t.gp, gc: t.gc, rp: t.rp, rc: t.rc, exp: t.at + TRADE_TTL }))
   };
@@ -869,7 +940,7 @@ function view(s, pid) {
 /* ---------- backup: the host downloads the whole room, and can restore it later (even on another server) ---------- */
 function snapshot(s) {
   const o = JSON.parse(JSON.stringify(s, (k, v) => k === 'clients' ? undefined : v));
-  delete o.players; delete o.host; delete o.code; delete o.hold; delete o.trades; delete o.chat; delete o.hostAway;
+  delete o.players; delete o.host; delete o.code; delete o.hold; delete o.trades; delete o.lt; delete o.chat; delete o.hostAway;
   return { app: 'ipl-auction', v: 1, savedAt: Date.now(), room: o };
 }
 function importRoom(r, name) {
@@ -909,18 +980,34 @@ setInterval(() => {
   for (const s of rooms.values()) {
     for (const c of s.clients) { try { c.res.write(': ping\n\n'); } catch (e) { s.clients.delete(c); } }
     const here = [...s.clients].some(c => c.pid === s.host);
+    const was = s.hostAway;
     if (here) s.hostAway = 0; else if (!s.hostAway) s.hostAway = Date.now();
+    if (s.clients.size && (!!was !== !!s.hostAway || (s.hostAway && !s.awayShown && Date.now() - s.hostAway >= HOST_AWAY_MS))) {
+      if (s.hostAway && Date.now() - s.hostAway >= HOST_AWAY_MS) s.awayShown = 1; if (!s.hostAway) s.awayShown = 0;
+      s.seq++; broadcast(s);
+    }
   }
 }, 15000);
 
 /* ---------- http ---------- */
 restore();
+process.on('uncaughtException', e => console.error('Uncaught (server kept alive):', e && e.stack || e));
+process.on('unhandledRejection', e => console.error('Unhandled rejection:', e));
+const zlib = require('zlib');
 const INDEX = fs.readFileSync(path.join(__dirname, 'index.html'));
+const INDEX_GZ = zlib.gzipSync(INDEX, { level: 9 });        // the page is ~440 KB: send it compressed (about 5x smaller)
 const send = (res, code, body, type) => { res.writeHead(code, { 'Content-Type': type || 'application/json', 'Cache-Control': 'no-store' }); res.end(body); };
 
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) return send(res, 200, INDEX, 'text/html; charset=utf-8');
+  req.on('error', () => {}); res.on('error', () => {});
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding', 'Cache-Control': 'no-cache' });
+      return res.end(INDEX_GZ);
+    }
+    return send(res, 200, INDEX, 'text/html; charset=utf-8');
+  }
   if (url.pathname === '/healthz') return send(res, 200, 'ok', 'text/plain');
   if (req.method === 'GET' && url.pathname === '/sets') {          // every set; each player's status comes from the live view on the client
     const s = rooms.get(String(url.searchParams.get('code') || '').toUpperCase());
@@ -941,7 +1028,9 @@ http.createServer((req, res) => {
     const pid = url.searchParams.get('pid');
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     if (!s || !s.players[pid]) { res.write('data: ' + JSON.stringify({ err: 'Room not found or expired.' }) + '\n\n'); return res.end(); }
+    req.socket.setNoDelay(true); req.socket.setTimeout(0);
     const client = { pid, res }; s.clients.add(client);
+    res.on('close', () => s.clients.delete(client));
     res.write('retry: 1000\n\n');
     res.write('data: ' + JSON.stringify(view(s, pid)) + '\n\n');
     req.on('close', () => s.clients.delete(client));
